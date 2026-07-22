@@ -1,0 +1,30 @@
+[project]
+name = "blindage"
+version = "0.1.0"
+description = "Privacy-preserving age verification via anonymous age tokens"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.111",
+    "uvicorn>=0.30",
+    "pydantic>=2.7",
+    "httpx>=0.27",
+    "typer>=0.12",
+    "cryptography>=42",
+    "argon2-cffi>=23.1",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8"]
+
+[project.scripts]
+blindage = "blindage.wallet.cli:app"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["blindage"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
