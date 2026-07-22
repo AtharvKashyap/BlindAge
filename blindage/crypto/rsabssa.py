@@ -130,7 +130,7 @@ def blind_sign(private_key_b64: str, blinded_msg: bytes) -> bytes:
     d = numbers.d
     modulus_len = (n.bit_length() + 7) // 8
     m = _os2ip(blinded_msg)
-    if m >= n:
+    if m >= n or m <= 1:
         raise BlindSignatureError("invalid blinded message: out of range")
     s = pow(m, d, n)
     if pow(s, e, n) != m:

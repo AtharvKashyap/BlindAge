@@ -116,3 +116,13 @@ def test_verifier_init_rejects_malformed_key_b64_as_blind_signature_error():
 def test_verifier_verify_returns_false_not_raise_on_garbage_signature():
     v = RsabssaTokenVerifier("k1", PUB)
     assert v.verify(b"m", b"garbage") is False
+
+
+def test_blind_sign_rejects_degenerate_blinded_message_zero():
+    with pytest.raises(BlindSignatureError):
+        blind_sign(PRIV, b"")
+
+
+def test_blind_sign_rejects_degenerate_blinded_message_one():
+    with pytest.raises(BlindSignatureError):
+        blind_sign(PRIV, (1).to_bytes(256, "big"))

@@ -231,6 +231,18 @@ def test_blind_issuance_round_trip(blind_client):
     assert RsabssaTokenVerifier(out["issuer_key_id"], RSA_PUB).verify(message, sig)
 
 
+def test_malformed_blinded_message_returns_422_not_500(blind_client):
+    eid = enroll(blind_client, "2000-01-01")
+    body = {
+        "version": "1.0", "enrollment_id": eid, "claim": "AGE_OVER_18",
+        "assurance_level": "AAL2", "epoch": "2026-Q4",
+        "blinded_messages": ["@@@not base64@@@"],
+    }
+    resp = blind_client.post("/v1/tokens/issue", json=body)
+    assert resp.status_code == 422
+    assert "invalid blinded message" in resp.json()["detail"]
+
+
 def test_rsabssa_key_rejects_plain_nonces(blind_client):
     eid = enroll(blind_client, "2000-01-01")
     body = issue_body(eid)

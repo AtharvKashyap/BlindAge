@@ -63,7 +63,7 @@ def create_app(
                     b64u_encode(blind_sign(private_key_b64, b64u_decode(bm)))
                     for bm in req.blinded_messages
                 ]
-            except BlindSignatureError as exc:
+            except (BlindSignatureError, ValueError) as exc:
                 raise HTTPException(422, detail=f"invalid blinded message: {exc}")
         else:
             if not req.nonces:
