@@ -117,3 +117,13 @@ export function consentSummary(challenge, siteHost) {
     ],
   };
 }
+
+// Accept several shapes of pasted/loaded import data: the CLI export wrapper
+// {version, tokens:[...]}, a bare array of tokens, or a single token object.
+// Returns an array (possibly empty) — never throws.
+export function tokensFromParsed(parsed) {
+  if (Array.isArray(parsed)) return parsed;
+  if (parsed && Array.isArray(parsed.tokens)) return parsed.tokens;
+  if (parsed && typeof parsed === "object" && "nonce" in parsed) return [parsed];
+  return [];
+}

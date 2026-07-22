@@ -123,3 +123,19 @@ test("consentSummary lists what the site will and will not receive", () => {
   assert.ok(s.willReceive.some((x) => /age/i.test(x)));
   assert.ok(s.willNotReceive.some((x) => /name|birth|identity/i.test(x)));
 });
+
+import { tokensFromParsed } from "../../extension/core/protocol.js";
+
+test("tokensFromParsed accepts the export wrapper", () => {
+  assert.deepEqual(tokensFromParsed({ version: "1.0", tokens: [token()] }).length, 1);
+});
+test("tokensFromParsed accepts a bare array", () => {
+  assert.equal(tokensFromParsed([token(), token()]).length, 2);
+});
+test("tokensFromParsed accepts a single token object", () => {
+  assert.equal(tokensFromParsed(token()).length, 1);
+});
+test("tokensFromParsed returns [] for unrelated JSON", () => {
+  assert.deepEqual(tokensFromParsed({ hello: "world" }), []);
+  assert.deepEqual(tokensFromParsed(null), []);
+});

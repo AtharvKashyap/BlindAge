@@ -77,3 +77,9 @@ test("approveRequest does not spend a token when it errors", () => {
   const after = tokens.map((t) => ({ nonce: t.nonce, spent: t.spent }));
   assert.deepEqual(after, before);
 });
+
+test("mergeTokens reports rejected count for malformed tokens", () => {
+  const r = mergeTokens([], [token("ok"), { claim: "AGE_OVER_99", nonce: "bad" }, { nonce: "x" }]);
+  assert.equal(r.added, 1);
+  assert.equal(r.rejected, 2);
+});

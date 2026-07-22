@@ -14,8 +14,10 @@ small{color:#4a5568}
 <div id="pending"></div>
 <div class="card"><strong>Tokens</strong><div id="inventory"><small>none</small></div></div>
 <div class="card"><strong>Import tokens</strong>
-<p><small>Run <code>blindage export --out tokens.json</code> and paste it here.</small></p>
+<p><small>Run <code>blindage export --out tokens.json</code>, then choose the file
+(recommended) or paste its contents.</small></p>
+<p><input type="file" id="importFile" accept=".json,application/json"></p>
 <textarea id="importText" placeholder='{"version":"1.0","tokens":[...]}'></textarea>
-<button id="importBtn">Import</button><div id="importMsg"></div></div>
+<button id="importBtn">Import pasted text</button><div id="importMsg"></div></div>
 <script src="popup.js" type="module"></script>
 </body></html>

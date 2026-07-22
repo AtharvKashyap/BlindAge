@@ -3,14 +3,18 @@ import { selectToken, buildPresentation, isValidToken } from "./protocol.js";
 export function mergeTokens(existing, incoming) {
   const byNonce = new Map((existing || []).map((t) => [t.nonce, t]));
   let added = 0;
+  let rejected = 0;
   for (const t of incoming || []) {
-    if (!isValidToken(t)) continue;
+    if (!isValidToken(t)) {
+      rejected += 1;
+      continue;
+    }
     if (!byNonce.has(t.nonce)) {
       byNonce.set(t.nonce, { ...t, spent: t.spent ?? false });
       added += 1;
     }
   }
-  return { tokens: [...byNonce.values()], added };
+  return { tokens: [...byNonce.values()], added, rejected };
 }
 
 export function approveRequest(tokens, challenge, nowIso) {

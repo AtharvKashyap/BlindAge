@@ -1,4 +1,6 @@
 // extension/popup.js
+import { tokensFromParsed } from "./core/protocol.js";
+
 function send(msg) {
   return new Promise((resolve) => chrome.runtime.sendMessage(msg, resolve));
 }
@@ -53,16 +55,36 @@ async function renderPending() {
   });
 }
 
-document.getElementById("importBtn").addEventListener("click", async () => {
-  const msg = document.getElementById("importMsg");
+async function importFromText(text, msgEl) {
+  let parsed;
   try {
-    const parsed = JSON.parse(document.getElementById("importText").value);
-    const r = await send({ type: "import_tokens", tokens: parsed.tokens || [] });
-    msg.textContent = `Imported. ${r.added} new, ${r.count} total.`;
-    renderInventory();
-  } catch (e) {
-    msg.textContent = "Invalid JSON.";
+    parsed = JSON.parse(text);
+  } catch {
+    msgEl.textContent = "Invalid JSON — paste the whole tokens.json, or use Choose file.";
+    return;
   }
+  const tokens = tokensFromParsed(parsed);
+  if (tokens.length === 0) {
+    msgEl.textContent = "No tokens found in that JSON (expected a 'tokens' array).";
+    return;
+  }
+  const r = await send({ type: "import_tokens", tokens });
+  const parts = [`${r.added} new`, `${r.count} total`];
+  if (r.rejected) parts.push(`${r.rejected} rejected as malformed`);
+  msgEl.textContent = "Imported. " + parts.join(", ") + ".";
+  renderInventory();
+}
+
+document.getElementById("importBtn").addEventListener("click", () => {
+  importFromText(document.getElementById("importText").value, document.getElementById("importMsg"));
+});
+
+document.getElementById("importFile").addEventListener("change", (e) => {
+  const file = e.target.files && e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => importFromText(String(reader.result), document.getElementById("importMsg"));
+  reader.readAsText(file);
 });
 
 renderInventory();

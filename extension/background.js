@@ -16,9 +16,9 @@ async function setTokens(tokens) {
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   (async () => {
     if (msg.type === "import_tokens") {
-      const { tokens, added } = mergeTokens(await getTokens(), msg.tokens);
+      const { tokens, added, rejected } = mergeTokens(await getTokens(), msg.tokens);
       await setTokens(tokens);
-      sendResponse({ count: tokens.length, added });
+      sendResponse({ count: tokens.length, added, rejected });
     } else if (msg.type === "list_tokens") {
       sendResponse({ tokens: await getTokens() });
     } else if (msg.type === "page_request") {
