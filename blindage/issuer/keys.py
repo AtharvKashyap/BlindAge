@@ -4,6 +4,7 @@ from pathlib import Path
 from blindage.crypto import (
     ED25519_ALGORITHM,
     MOCK_ALGORITHM,
+    RSABSSA_ALGORITHM,
     Ed25519TokenSigner,
     MockTokenSigner,
     b64u_decode,
@@ -19,11 +20,11 @@ def _entry_algorithm(entry: dict) -> str:
 def public_material(entry: dict) -> tuple[str, str]:
     """(algorithm, public_key_b64) as published in registry/well-known.
 
-    Ed25519: the real public key. Mock: the shared secret doubles as the
-    'public key' — documented Phase 1 test-only behavior.
+    Ed25519/rsabssa: the real public key. Mock: the shared secret doubles as
+    the 'public key' — documented Phase 1 test-only behavior.
     """
     algorithm = _entry_algorithm(entry)
-    if algorithm == ED25519_ALGORITHM:
+    if algorithm in (ED25519_ALGORITHM, RSABSSA_ALGORITHM):
         return algorithm, entry["public_key_b64"]
     return algorithm, entry["secret_b64"]
 
@@ -35,7 +36,7 @@ class IssuerKeyStore:
         self._by_tuple: dict[tuple, dict] = {}
         for entry in keys:
             algorithm = _entry_algorithm(entry)
-            if algorithm not in (ED25519_ALGORITHM, MOCK_ALGORITHM):
+            if algorithm not in (ED25519_ALGORITHM, MOCK_ALGORITHM, RSABSSA_ALGORITHM):
                 raise ValueError(f"unsupported key algorithm: {algorithm!r}")
             binding = (
                 AgeClaim(entry["claim"]),
@@ -56,7 +57,11 @@ class IssuerKeyStore:
         entry = self._by_tuple.get((claim, assurance_level, epoch))
         if entry is None:
             return None
-        if _entry_algorithm(entry) == ED25519_ALGORITHM:
+        algorithm = _entry_algorithm(entry)
+        if algorithm == RSABSSA_ALGORITHM:
+            # rsabssa keys never sign plaintext — only blind_signer_for.
+            return None
+        if algorithm == ED25519_ALGORITHM:
             signer: Ed25519TokenSigner | MockTokenSigner = Ed25519TokenSigner(
                 key_id=entry["key_id"], private_key_b64=entry["private_key_b64"]
             )
@@ -65,6 +70,23 @@ class IssuerKeyStore:
                 key_id=entry["key_id"], secret=b64u_decode(entry["secret_b64"])
             )
         return signer, entry["valid_until"]
+
+    def blind_signer_for(
+        self, claim: AgeClaim, assurance_level: AssuranceLevel, epoch: str
+    ) -> tuple[str, str, str] | None:
+        """(key_id, private_key_b64, valid_until) for rsabssa tuples only."""
+        entry = self._by_tuple.get((claim, assurance_level, epoch))
+        if entry is None or _entry_algorithm(entry) != RSABSSA_ALGORITHM:
+            return None
+        return entry["key_id"], entry["private_key_b64"], entry["valid_until"]
+
+    def algorithm_for(
+        self, claim: AgeClaim, assurance_level: AssuranceLevel, epoch: str
+    ) -> str | None:
+        entry = self._by_tuple.get((claim, assurance_level, epoch))
+        if entry is None:
+            return None
+        return _entry_algorithm(entry)
 
     def all_entries(self) -> list[dict]:
         return list(self._by_tuple.values())

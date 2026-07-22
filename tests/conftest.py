@@ -1,7 +1,7 @@
 import pytest
 from fastapi.testclient import TestClient
 
-from blindage.crypto import generate_token_keypair
+from blindage.crypto import generate_blind_keypair
 from blindage.example_site.app import create_site
 from blindage.issuer.app import create_app as create_issuer
 from blindage.issuer.keys import IssuerKeyStore
@@ -10,16 +10,16 @@ from blindage.registry import TrustRegistry
 
 ISSUER_ID = "did:web:issuer.test"
 DEV_KEY_18 = "dev-AGE_OVER_18-AAL2-2026-Q3"
-DEV_ED_PRIV, DEV_ED_PUB = generate_token_keypair()
+DEV_RSA_PRIV, DEV_RSA_PUB = generate_blind_keypair(2048)
 
 
 def dev_key_entries() -> list[dict]:
     return [
         {
             "key_id": DEV_KEY_18,
-            "algorithm": "ed25519",
-            "private_key_b64": DEV_ED_PRIV,
-            "public_key_b64": DEV_ED_PUB,
+            "algorithm": "rsabssa-sha384-pss-deterministic",
+            "private_key_b64": DEV_RSA_PRIV,
+            "public_key_b64": DEV_RSA_PUB,
             "claim": "AGE_OVER_18",
             "assurance_level": "AAL2",
             "epoch": "2026-Q3",
@@ -45,8 +45,8 @@ def dev_registry() -> TrustRegistry:
                         {
                             "key_id": DEV_KEY_18,
                             "purpose": "token_signing",
-                            "algorithm": "ed25519",
-                            "public_key": DEV_ED_PUB,
+                            "algorithm": "rsabssa-sha384-pss-deterministic",
+                            "public_key": DEV_RSA_PUB,
                             "claim": "AGE_OVER_18",
                             "assurance_level": "AAL2",
                             "epoch": "2026-Q3",

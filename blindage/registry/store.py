@@ -45,6 +45,12 @@ class TrustRegistry:
                             f"key material reuse detected for key_id {key.key_id!r}"
                         )
                     seen_material.add(key.public_key)
+        for issuer in issuers:
+            for key in issuer.keys:
+                if key.purpose == "registry" and key.public_key in seen_material:
+                    raise RegistryError(
+                        f"cross-purpose key material collision for key_id {key.key_id!r}"
+                    )
         return cls({i.issuer_id: i for i in issuers})
 
     @classmethod

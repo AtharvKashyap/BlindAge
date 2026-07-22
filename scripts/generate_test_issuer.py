@@ -1,7 +1,8 @@
 """Generate dev issuer keys + signed registry under config/dev/. Dev only.
 
 config/dev/ is gitignored; in mock mode the registry 'public_key' IS the HMAC
-secret (Phase 1 only, closed by Phase 3 blind signatures).
+secret (Phase 1 only artifact, retained only for the mock-hmac-sha256 choice).
+Default issuance is RFC 9474 RSA blind signatures (rsabssa-sha384-pss-deterministic).
 """
 import sys
 from pathlib import Path
@@ -11,7 +12,7 @@ import argparse
 import json
 import secrets
 
-from blindage.crypto import b64u_encode, generate_token_keypair
+from blindage.crypto import b64u_encode, generate_blind_keypair, generate_token_keypair
 from blindage.registry import generate_root_keypair, sign_registry
 
 CLAIMS = ["AGE_OVER_13", "AGE_OVER_16", "AGE_OVER_18", "AGE_OVER_21"]
@@ -26,8 +27,8 @@ def main() -> None:
     parser.add_argument("--out", default="config/dev")
     parser.add_argument(
         "--algorithm",
-        default="ed25519",
-        choices=["ed25519", "mock-hmac-sha256"],
+        default="rsabssa-sha384-pss-deterministic",
+        choices=["rsabssa-sha384-pss-deterministic", "ed25519", "mock-hmac-sha256"],
     )
     args = parser.parse_args()
 
@@ -38,7 +39,22 @@ def main() -> None:
     registry_keys = []
     for claim in CLAIMS:
         key_id = f"dev-{claim}-AAL2-{args.epoch}"
-        if args.algorithm == "ed25519":
+        if args.algorithm == "rsabssa-sha384-pss-deterministic":
+            private_b64, public_b64 = generate_blind_keypair(2048)
+            key_entries.append(
+                {
+                    "key_id": key_id,
+                    "algorithm": "rsabssa-sha384-pss-deterministic",
+                    "private_key_b64": private_b64,
+                    "public_key_b64": public_b64,
+                    "claim": claim,
+                    "assurance_level": "AAL2",
+                    "epoch": args.epoch,
+                    "valid_until": args.valid_until,
+                }
+            )
+            registry_public = public_b64
+        elif args.algorithm == "ed25519":
             private_b64, public_b64 = generate_token_keypair()
             key_entries.append(
                 {

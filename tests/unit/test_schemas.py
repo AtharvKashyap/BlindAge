@@ -85,7 +85,26 @@ def test_issue_request_has_no_domain_or_pii_field():
     # Double-anonymity: there is no field through which the wallet could tell
     # the issuer where tokens will be used.
     fields = set(TokenIssueRequest.model_fields)
-    assert fields == {"version", "enrollment_id", "claim", "assurance_level", "epoch", "nonces"}
+    assert fields == {
+        "version",
+        "enrollment_id",
+        "claim",
+        "assurance_level",
+        "epoch",
+        "nonces",
+        "blinded_messages",
+    }
+
+
+def test_issue_request_requires_exactly_one_payload_kind():
+    base = dict(enrollment_id="e", claim=AgeClaim.AGE_OVER_18,
+                assurance_level=AssuranceLevel.AAL2, epoch="2026-Q3")
+    with pytest.raises(ValidationError):
+        TokenIssueRequest(**base)  # neither
+    with pytest.raises(ValidationError):
+        TokenIssueRequest(**base, nonces=["a"], blinded_messages=["b"])  # both
+    assert TokenIssueRequest(**base, nonces=["a"]).nonces == ["a"]
+    assert TokenIssueRequest(**base, blinded_messages=["b"]).blinded_messages == ["b"]
 
 
 def test_issuer_key_requires_binding_for_token_signing():

@@ -10,8 +10,11 @@ Phases (spec §14, `docs/superpowers/specs/2026-07-21-blindage-design.md`):
    registry/well-known publish public keys only, global key-material uniqueness enforced,
    deterministic test vectors, privacy tests CI-blocking [MOD-6]). Issuer still sees
    token values; the 1 strict xfail remains until Phase 3.
-3. **Blind signatures (RFC 9474 / RSABSSA)** [MOD-2] — issuance↔redemption unlinkability;
-   the xfail unlinkability test must flip to passing (strict marker forces its removal).
+3. **Blind signatures (RFC 9474 / RSABSSA)** [MOD-2] — ✅ complete (RSABSSA-SHA384-PSS-
+   Deterministic implemented from-spec on `cryptography`, gated by RFC 9474 Appendix A
+   official test vectors; issuance↔redemption unlinkability now holds — the former xfail
+   unlinkability test is a permanent CI-blocking guarantee; verifier enforces an algorithm
+   allowlist; decision log at `docs/decisions.md`).
 4. **Browser extension** — TypeScript + Vite; consent UI, origin validation, token
    inventory.
 5. **Signed registry distribution** — download, root-signature verification, caching,
@@ -45,11 +48,8 @@ physical_token_demo/         # optional low-assurance demo module (clearly label
 
 ## Deferred follow-ups from Phase 1–2 reviews
 
-- **Pre-Phase-3 gate: algorithm allowlisting.** The verifier dispatches purely on the
-  registry key's `algorithm`; a mock-algorithm key in a real registry would be forgeable
-  (its published "public key" is the HMAC secret). Add `allowed_algorithms` to
-  `VerifierPolicy` (default ed25519-only) or hard-reject `MOCK_ALGORITHM` outside tests.
-  Pair with the cross-purpose key-collision check (registry vs token_signing material).
+- **Pre-deployment gate: swap pure-Python RSABSSA for audited native implementation**
+  (PyO3/jedisct1) — see docs/decisions.md.
 - Consider a domain-separation context prefix in `token_message()` before more key
   types exist (cheap defense-in-depth; not exploitable today).
 - Decide consciously whether a claim hierarchy (over-21 satisfies over-18) is wanted;

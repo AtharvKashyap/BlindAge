@@ -5,7 +5,17 @@ from datetime import date, timedelta
 import pytest
 from fastapi.testclient import TestClient
 
-from blindage.crypto import Ed25519TokenVerifier, MockTokenVerifier, b64u_decode, b64u_encode, generate_token_keypair
+from blindage.crypto import (
+    Ed25519TokenVerifier,
+    MockTokenVerifier,
+    RsabssaTokenVerifier,
+    b64u_decode,
+    b64u_encode,
+    blind,
+    finalize,
+    generate_blind_keypair,
+    generate_token_keypair,
+)
 from blindage.issuer.app import create_app
 from blindage.issuer.keys import IssuerKeyStore, public_material
 from blindage.issuer.storage import EnrollmentStore
@@ -181,3 +191,82 @@ def test_unknown_entry_algorithm_fails_fast():
 
 def test_public_material_helper():
     assert public_material(ed25519_entry()) == ("ed25519", ED_PUB)
+
+
+RSA_PRIV, RSA_PUB = generate_blind_keypair(2048)
+
+
+def rsabssa_entry() -> dict:
+    return {
+        "key_id": "dev-AGE_OVER_18-AAL2-2026-Q4",
+        "algorithm": "rsabssa-sha384-pss-deterministic",
+        "private_key_b64": RSA_PRIV,
+        "public_key_b64": RSA_PUB,
+        "claim": "AGE_OVER_18",
+        "assurance_level": "AAL2",
+        "epoch": "2026-Q4",
+        "valid_until": "2027-01-01T00:00:00Z",
+    }
+
+
+@pytest.fixture()
+def blind_client() -> TestClient:
+    app = create_app(IssuerKeyStore([rsabssa_entry()]), EnrollmentStore(":memory:"))
+    return TestClient(app)
+
+
+def test_blind_issuance_round_trip(blind_client):
+    eid = enroll(blind_client, "2000-01-01")
+    message = token_message("YS1yYW5kb20tbm9uY2U")
+    blinded, inv = blind(RSA_PUB, message)
+    body = {
+        "version": "1.0", "enrollment_id": eid, "claim": "AGE_OVER_18",
+        "assurance_level": "AAL2", "epoch": "2026-Q4",
+        "blinded_messages": [b64u_encode(blinded)],
+    }
+    resp = blind_client.post("/v1/tokens/issue", json=body)
+    assert resp.status_code == 200
+    out = resp.json()
+    sig = finalize(RSA_PUB, message, b64u_decode(out["signatures"][0]), inv)
+    assert RsabssaTokenVerifier(out["issuer_key_id"], RSA_PUB).verify(message, sig)
+
+
+def test_malformed_blinded_message_returns_422_not_500(blind_client):
+    eid = enroll(blind_client, "2000-01-01")
+    body = {
+        "version": "1.0", "enrollment_id": eid, "claim": "AGE_OVER_18",
+        "assurance_level": "AAL2", "epoch": "2026-Q4",
+        "blinded_messages": ["@@@not base64@@@"],
+    }
+    resp = blind_client.post("/v1/tokens/issue", json=body)
+    assert resp.status_code == 422
+    assert "invalid blinded message" in resp.json()["detail"]
+
+
+def test_rsabssa_key_rejects_plain_nonces(blind_client):
+    eid = enroll(blind_client, "2000-01-01")
+    body = issue_body(eid)
+    body["epoch"] = "2026-Q4"
+    resp = blind_client.post("/v1/tokens/issue", json=body)
+    assert resp.status_code == 422
+    assert "blinded_messages" in resp.json()["detail"]
+
+
+def test_ed25519_key_rejects_blinded_messages(ed_client):
+    eid = enroll(ed_client, "2000-01-01")
+    body = {
+        "version": "1.0", "enrollment_id": eid, "claim": "AGE_OVER_16",
+        "assurance_level": "AAL2", "epoch": "2026-Q3",
+        "blinded_messages": ["YmxpbmRlZA"],
+    }
+    resp = ed_client.post("/v1/tokens/issue", json=body)
+    assert resp.status_code == 422
+    assert "nonces" in resp.json()["detail"]
+
+
+def test_well_known_includes_rsabssa_public_key(blind_client):
+    meta = blind_client.get("/.well-known/blindage-issuer.json").json()
+    (key,) = meta["keys"]
+    assert key["algorithm"] == "rsabssa-sha384-pss-deterministic"
+    assert key["public_key"] == RSA_PUB
+    assert RSA_PRIV not in json.dumps(meta)
