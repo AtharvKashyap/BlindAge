@@ -37,8 +37,12 @@ def test_blinded_message_differs_from_message_and_varies():
 
 def test_finalize_rejects_wrong_key_signature():
     blinded, inv = blind(PUB, b"m")
-    wrong_blind_sig = blind_sign(OTHER_PRIV, blinded)
+    # Signing under the wrong key must fail somewhere in the chain: either
+    # blind_sign rejects the blinded value as out-of-range (it was reduced mod
+    # PUB's modulus, which exceeds OTHER's modulus ~half the time), or finalize
+    # fails the PSS check. Both raise BlindSignatureError — wrap the whole chain.
     with pytest.raises(BlindSignatureError):
+        wrong_blind_sig = blind_sign(OTHER_PRIV, blinded)
         finalize(PUB, b"m", wrong_blind_sig, inv)
 
 
