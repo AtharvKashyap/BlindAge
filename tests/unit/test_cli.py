@@ -113,3 +113,25 @@ def test_mint_without_enrollment_fails(tmp_path: Path):
     )
     assert result.exit_code == 1
     assert "enroll" in result.output.lower()
+
+
+def test_export_writes_unspent_tokens(tmp_path: Path):
+    # Enroll + mint, then export.
+    runner.invoke(
+        cli.app,
+        ["enroll", "--issuer", "http://issuer.test", "--test-dob", "2000-01-01"] + vault_args(tmp_path),
+    )
+    runner.invoke(
+        cli.app,
+        ["mint", "--issuer", "http://issuer.test", "--claim", "AGE_OVER_18",
+         "--assurance", "AAL2", "--epoch", "2026-Q3", "--count", "3"] + vault_args(tmp_path),
+    )
+    out_file = tmp_path / "tokens.json"
+    result = runner.invoke(cli.app, ["export", "--out", str(out_file)] + vault_args(tmp_path))
+    assert result.exit_code == 0, result.output
+    data = json.loads(out_file.read_text())
+    assert data["version"] == "1.0"
+    assert len(data["tokens"]) == 3
+    t = data["tokens"][0]
+    assert set(t) >= {"claim", "assurance_level", "epoch", "issuer_id", "issuer_key_id", "nonce", "signature"}
+    assert "spent" not in t  # exported tokens carry no wallet-internal state

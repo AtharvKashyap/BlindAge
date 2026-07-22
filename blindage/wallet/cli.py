@@ -1,3 +1,4 @@
+import json
 from collections import Counter
 from pathlib import Path
 
@@ -99,6 +100,18 @@ def prove_cmd(
     vault.save(data)  # persists the spent flag BEFORE releasing the presentation
     out.write_text(presentation.model_dump_json(indent=2))
     typer.echo(f"Presentation written to {out} (token marked spent).")
+
+
+@app.command("export")
+def export_cmd(
+    out: Path = typer.Option(..., "--out"),
+    vault_path: Path = VaultOpt,
+    passphrase: str = PassOpt,
+) -> None:
+    _, data = _open_vault(vault_path, passphrase)
+    tokens = [stored.token.model_dump(mode="json") for stored in data.tokens if not stored.spent]
+    out.write_text(json.dumps({"version": "1.0", "tokens": tokens}, indent=2))
+    typer.echo(f"Exported {len(tokens)} unspent token(s) to {out}.")
 
 
 if __name__ == "__main__":
