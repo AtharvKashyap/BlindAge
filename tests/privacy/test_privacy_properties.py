@@ -72,7 +72,8 @@ def test_issuer_request_schema_cannot_carry_domain():
     # Structural guarantee: there is no field in the issuance request through
     # which the wallet could tell the issuer where tokens will be spent.
     assert set(TokenIssueRequest.model_fields) == {
-        "version", "enrollment_id", "claim", "assurance_level", "epoch", "nonces",
+        "version", "enrollment_id", "claim", "assurance_level", "epoch",
+        "nonces", "blinded_messages",
     }
 
 

@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, model_validator
 
 from blindage.schemas.enums import AgeClaim, AssuranceLevel
 
@@ -38,9 +38,21 @@ class TokenIssueRequest(BaseModel):
     claim: AgeClaim
     assurance_level: AssuranceLevel
     epoch: str
-    # Phase 1: plaintext nonces (mock, linkable). Phase 3 replaces these with
-    # blinded commitments — that swap closes the documented privacy gap.
-    nonces: list[str]
+    # Exactly one of the two payload kinds:
+    # - blinded_messages: RFC 9474 blinded values (rsabssa keys) — the issuer
+    #   cannot see the token nonces. This is the double-anonymity path.
+    # - nonces: plaintext token nonces (ed25519/mock keys only; the legacy
+    #   non-blind path retained for tests and non-blind algorithms).
+    nonces: list[str] | None = None
+    blinded_messages: list[str] | None = None
+
+    @model_validator(mode="after")
+    def _exactly_one_payload(self) -> "TokenIssueRequest":
+        has_nonces = bool(self.nonces)
+        has_blinded = bool(self.blinded_messages)
+        if has_nonces == has_blinded:
+            raise ValueError("exactly one of nonces or blinded_messages is required")
+        return self
 
 
 class TokenIssueResponse(BaseModel):

@@ -3,7 +3,7 @@ from datetime import date, datetime, timezone
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, ConfigDict
 
-from blindage.crypto import b64u_encode
+from blindage.crypto import RSABSSA_ALGORITHM, BlindSignatureError, b64u_decode, b64u_encode, blind_sign
 from blindage.issuer.eligibility import eligible_claims
 from blindage.issuer.keys import IssuerKeyStore, public_material
 from blindage.issuer.storage import EnrollmentStore
@@ -36,8 +36,6 @@ def create_app(
 
     @app.post("/v1/tokens/issue")
     def issue(req: TokenIssueRequest) -> TokenIssueResponse:
-        if len(req.nonces) > MAX_BATCH:
-            raise HTTPException(422, detail=f"batch limit is {MAX_BATCH}")
         dob = enrollment_store.get_dob(req.enrollment_id)
         if dob is None:
             raise HTTPException(404, detail="unknown enrollment")
@@ -49,14 +47,35 @@ def create_app(
             # Key-partitioning enforcement point [MOD-1]: never sign under a
             # key whose tuple the enrolled user is not eligible for.
             raise HTTPException(403, detail="not eligible for requested claim")
-        found = key_store.signer_for(req.claim, req.assurance_level, req.epoch)
-        if found is None:
+        entry_algorithm = key_store.algorithm_for(req.claim, req.assurance_level, req.epoch)
+        if entry_algorithm is None:
             raise HTTPException(409, detail="no signing key for requested tuple")
-        signer, valid_until = found
-        signatures = [b64u_encode(signer.sign(token_message(n))) for n in req.nonces]
+        if entry_algorithm == RSABSSA_ALGORITHM:
+            if not req.blinded_messages:
+                raise HTTPException(422, detail="this key requires blinded_messages")
+            if len(req.blinded_messages) > MAX_BATCH:
+                raise HTTPException(422, detail=f"batch limit is {MAX_BATCH}")
+            key_id, private_key_b64, valid_until = key_store.blind_signer_for(
+                req.claim, req.assurance_level, req.epoch
+            )
+            try:
+                signatures = [
+                    b64u_encode(blind_sign(private_key_b64, b64u_decode(bm)))
+                    for bm in req.blinded_messages
+                ]
+            except BlindSignatureError as exc:
+                raise HTTPException(422, detail=f"invalid blinded message: {exc}")
+        else:
+            if not req.nonces:
+                raise HTTPException(422, detail="this key requires nonces")
+            if len(req.nonces) > MAX_BATCH:
+                raise HTTPException(422, detail=f"batch limit is {MAX_BATCH}")
+            signer, valid_until = key_store.signer_for(req.claim, req.assurance_level, req.epoch)
+            signatures = [b64u_encode(signer.sign(token_message(n))) for n in req.nonces]
+            key_id = signer.key_id
         return TokenIssueResponse(
             issuer_id=issuer_id,
-            issuer_key_id=signer.key_id,
+            issuer_key_id=key_id,
             claim=req.claim,
             assurance_level=req.assurance_level,
             epoch=req.epoch,
