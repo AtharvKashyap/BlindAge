@@ -1,0 +1,17 @@
+{
+  "manifest_version": 3,
+  "name": "BlindAge",
+  "version": "0.1.0",
+  "description": "Prove you are old enough without proving who you are.",
+  "permissions": ["storage", "activeTab", "tabs", "scripting"],
+  "host_permissions": ["http://localhost/*", "http://127.0.0.1/*"],
+  "background": { "service_worker": "background.js", "type": "module" },
+  "action": { "default_popup": "popup.html", "default_title": "BlindAge" },
+  "content_scripts": [
+    {
+      "matches": ["http://localhost/*", "http://127.0.0.1/*"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}
