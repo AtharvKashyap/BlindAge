@@ -5,6 +5,12 @@ from blindage.crypto.mock import (
     MockTokenVerifier,
     mock_verifier_from_public_key,
 )
+from blindage.crypto.ed25519 import (
+    ED25519_ALGORITHM,
+    Ed25519TokenSigner,
+    Ed25519TokenVerifier,
+    generate_token_keypair,
+)
 
 __all__ = [
     "MOCK_ALGORITHM",
@@ -15,4 +21,8 @@ __all__ = [
     "b64u_decode",
     "b64u_encode",
     "mock_verifier_from_public_key",
+    "ED25519_ALGORITHM",
+    "Ed25519TokenSigner",
+    "Ed25519TokenVerifier",
+    "generate_token_keypair",
 ]
