@@ -5,3 +5,4 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 PY=${PYTHON:-.venv/bin/python}
 "$PY" -m pytest -q --tb=short
+./scripts/test_extension.sh

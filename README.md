@@ -14,7 +14,9 @@ identity. The issuer never learns where tokens are used.
 > exists for. Conformance is proven against RFC 9474 official test
 > vectors. Still not production-ready: Python's big-int math is not
 > constant-time (see docs/decisions.md), assurance proofing is simulated,
-> and there is no browser extension yet. Do not deploy.
+> and while a Phase 4 presentation-only browser extension now exists (it
+> presents pre-minted tokens; it does not mint in the browser), there is
+> still no in-browser minting. Do not deploy.
 >
 > BlindAge provides privacy-preserving age *assurance*, not perfect age
 > *enforcement* — it cannot fully prevent voluntary token sharing. The honest
@@ -29,6 +31,27 @@ python3 -m venv .venv
 .venv/bin/pytest                       # full suite
 ./scripts/run_protocol_demo.sh         # end-to-end demo: enroll → mint → prove → redeem → replay-reject
 ```
+
+## Browser extension (Phase 4)
+
+A presentation-only Chrome extension (Manifest V3, vanilla JS, no build step). It
+detects a site's age gate, shows a consent prompt, presents one stored anonymous
+token, and marks it spent. It performs no cryptography — tokens are minted by the
+Python wallet and imported.
+
+```bash
+.venv/bin/python scripts/generate_test_issuer.py
+export BLINDAGE_WALLET_PASSPHRASE=demo
+.venv/bin/python -m uvicorn --port 8400 --factory demo_support:issuer_app &
+.venv/bin/python -m uvicorn --port 8500 --factory demo_support:site_app &
+.venv/bin/python -m blindage.wallet.cli enroll --issuer http://localhost:8400 --test-dob 2000-01-01 --vault /tmp/w.blindage
+.venv/bin/python -m blindage.wallet.cli mint   --issuer http://localhost:8400 --claim AGE_OVER_18 --assurance AAL2 --epoch 2026-Q3 --count 5 --vault /tmp/w.blindage
+.venv/bin/python -m blindage.wallet.cli export --out /tmp/tokens.json --vault /tmp/w.blindage
+```
+
+Then load `extension/` unpacked (chrome://extensions → Developer mode → Load
+unpacked), paste `/tmp/tokens.json` into the popup's Import box, open
+`http://localhost:8500/protected`, click the BlindAge icon, and "Allow once".
 
 ## Documents
 
