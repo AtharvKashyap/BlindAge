@@ -55,7 +55,13 @@ async function redeem(presentation) {
     document.getElementById("status").style.display = "none";
     document.getElementById("content").style.display = "block";
   } else {
-    document.getElementById("status").textContent = "Access denied: " + JSON.stringify(body.decision);
+    const failed = Object.entries(body.detail || {})
+      .filter(([k, v]) => v === false && k !== "valid")
+      .map(([k]) => k);
+    const why = failed.length ? failed.join(", ") : body.decision;
+    document.getElementById("status").textContent =
+      "Access denied (failed: " + why + "). Fetching a fresh challenge — open BlindAge and click Allow again.";
+    getChallenge();  // re-arm the extension with a fresh, unexpired challenge
   }
 }
 window.addEventListener("message", (e) => {
@@ -71,7 +77,10 @@ getChallenge();
 
 
 def create_site(
-    registry: TrustRegistry, trusted_issuer: str, audience: str = "localhost"
+    registry: TrustRegistry,
+    trusted_issuer: str,
+    audience: str = "localhost",
+    challenge_ttl_seconds: int = 1800,
 ) -> FastAPI:
     app = FastAPI(title="BlindAge Example Age-Gated Site")
     policy = VerifierPolicy(
@@ -80,7 +89,9 @@ def create_site(
         minimum_assurance_level=AssuranceLevel.AAL2,
         trusted_issuers=[trusted_issuer],
     )
-    challenges = ChallengeManager(audience=audience)
+    # Generous TTL for the demo so a challenge does not expire while the user
+    # opens the extension popup and reviews the consent prompt.
+    challenges = ChallengeManager(audience=audience, ttl_seconds=challenge_ttl_seconds)
     verifier = BlindAgeVerifier(
         registry=registry,
         policy=policy,
