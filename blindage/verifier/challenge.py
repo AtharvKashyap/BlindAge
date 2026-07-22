@@ -29,7 +29,19 @@ class ChallengeManager:
         return challenge
 
     def consume(self, challenge_id: str, challenge_value: str) -> VerifierChallenge | None:
-        """One-time: a challenge is removed on first consume attempt that matches."""
+        """One-time: a challenge is removed on first consume attempt that matches.
+
+        Accepted risk: challenge_id travels in the clear (it is not a secret;
+        `challenge_value` is), and this method pops the pending challenge
+        before comparing values. An attacker who learns a pending
+        challenge_id (e.g. by observing it on the wire) can burn it with a
+        wrong challenge_value, denying the legitimate holder's next attempt.
+        This is bounded griefing, not a security bypass: challenges are cheap
+        to re-issue and carry no residual privilege, so the worst case is a
+        forced retry. This is intentional -- fail-closed pop-first semantics
+        beat the alternative of leaving a used/mismatched challenge live for
+        a possible replay.
+        """
         challenge = self._pending.pop(challenge_id, None)
         if challenge is None:
             return None

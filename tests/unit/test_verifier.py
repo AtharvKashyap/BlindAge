@@ -204,3 +204,97 @@ def test_challenge_manager_expiry():
     cm = ChallengeManager(audience="example.test", ttl_seconds=-1)  # born expired
     ch = cm.create(AgeClaim.AGE_OVER_18, AssuranceLevel.AAL2)
     assert cm.consume(ch.challenge_id, ch.challenge) is None
+
+
+def test_malformed_signature_denied_not_crashed():
+    verifier, cm = make_verifier()
+    token = signed_token()
+    token.signature = "a"
+    decision = verifier.verify(present(cm, token))
+    assert decision.decision == Decision.DENY
+    assert decision.signature_valid is False
+
+
+def test_malformed_signature_junk_denied_not_crashed():
+    verifier, cm = make_verifier()
+    token = signed_token()
+    token.signature = "!!!"
+    decision = verifier.verify(present(cm, token))
+    assert decision.decision == Decision.DENY
+    assert decision.signature_valid is False
+
+
+def test_maximum_token_age_seconds_rejected_at_construction():
+    policy = VerifierPolicy(
+        policy_id="p1",
+        required_claim=AgeClaim.AGE_OVER_18,
+        minimum_assurance_level=AssuranceLevel.AAL2,
+        trusted_issuers=[ISSUER],
+        maximum_token_age_seconds=60,
+    )
+    cm = ChallengeManager(audience="example.test")
+    with pytest.raises(ValueError):
+        BlindAgeVerifier(
+            registry=registry(),
+            policy=policy,
+            replay_cache=ReplayCache(":memory:"),
+            challenge_manager=cm,
+            audience="example.test",
+        )
+
+
+def test_require_domain_binding_false_allows_wrong_audience_and_no_challenge():
+    policy = VerifierPolicy(
+        policy_id="p1",
+        required_claim=AgeClaim.AGE_OVER_18,
+        minimum_assurance_level=AssuranceLevel.AAL2,
+        trusted_issuers=[ISSUER],
+        require_domain_binding=False,
+    )
+    cm = ChallengeManager(audience="example.test")
+    verifier = BlindAgeVerifier(
+        registry=registry(),
+        policy=policy,
+        replay_cache=ReplayCache(":memory:"),
+        challenge_manager=cm,
+        audience="example.test",
+    )
+    # challenge is never issued via cm.create, and audience is wrong
+    presentation = Presentation(
+        required_claim=AgeClaim.AGE_OVER_18,
+        token=signed_token(),
+        domain_binding=DomainBinding(
+            audience="evil.test",
+            challenge="never-issued-challenge-value",
+            challenge_id="never-issued-id",
+            timestamp=datetime.now(timezone.utc),
+        ),
+    )
+    decision = verifier.verify(presentation)
+    assert decision.decision == Decision.ALLOW
+    assert decision.domain_binding_valid is True
+    assert decision.challenge_valid is True
+
+
+def test_require_single_use_false_allows_replay():
+    policy = VerifierPolicy(
+        policy_id="p1",
+        required_claim=AgeClaim.AGE_OVER_18,
+        minimum_assurance_level=AssuranceLevel.AAL2,
+        trusted_issuers=[ISSUER],
+        require_single_use=False,
+    )
+    cm = ChallengeManager(audience="example.test")
+    verifier = BlindAgeVerifier(
+        registry=registry(),
+        policy=policy,
+        replay_cache=ReplayCache(":memory:"),
+        challenge_manager=cm,
+        audience="example.test",
+    )
+    token = signed_token()
+    first = verifier.verify(present(cm, token))
+    assert first.decision == Decision.ALLOW
+    second = verifier.verify(present(cm, token))
+    assert second.decision == Decision.ALLOW
+    assert second.replayed is False

@@ -1,3 +1,4 @@
+import binascii
 import hashlib
 from datetime import datetime, timezone
 
@@ -29,6 +30,11 @@ class BlindAgeVerifier:
         challenge_manager: ChallengeManager,
         audience: str,
     ) -> None:
+        if policy.maximum_token_age_seconds is not None:
+            raise ValueError(
+                "maximum_token_age_seconds is not supported in Phase 1 "
+                "(tokens carry no issuance timestamp)"
+            )
         self._registry = registry
         self._policy = policy
         self._replay = replay_cache
@@ -75,9 +81,13 @@ class BlindAgeVerifier:
             return deny()
 
         verifier = mock_verifier_from_public_key(key.key_id, key.public_key)
-        flags["signature_valid"] = verifier.verify(
-            token_message(token.nonce), b64u_decode(token.signature)
-        )
+        try:
+            signature_bytes = b64u_decode(token.signature)
+            flags["signature_valid"] = verifier.verify(
+                token_message(token.nonce), signature_bytes
+            )
+        except (binascii.Error, ValueError):
+            flags["signature_valid"] = False
         if not flags["signature_valid"]:
             return deny()
 
@@ -105,23 +115,28 @@ class BlindAgeVerifier:
             return deny()
 
         binding = presentation.domain_binding
-        flags["domain_binding_valid"] = binding.audience == self._audience
-        if not flags["domain_binding_valid"]:
-            return deny()
+        if self._policy.require_domain_binding:
+            flags["domain_binding_valid"] = binding.audience == self._audience
+            if not flags["domain_binding_valid"]:
+                return deny()
 
-        challenge = self._challenges.consume(binding.challenge_id, binding.challenge)
-        flags["challenge_valid"] = (
-            challenge is not None
-            and challenge.required_claim == self._policy.required_claim
-        )
-        if not flags["challenge_valid"]:
-            return deny()
+            challenge = self._challenges.consume(binding.challenge_id, binding.challenge)
+            flags["challenge_valid"] = (
+                challenge is not None
+                and challenge.required_claim == self._policy.required_claim
+            )
+            if not flags["challenge_valid"]:
+                return deny()
+        else:
+            flags["domain_binding_valid"] = True
+            flags["challenge_valid"] = True
 
         # Replay check LAST: the nonce is only burned once every other check
         # has passed, so a failed attempt does not consume the token.
-        if not self._replay.check_and_insert(sha256_hex(token.nonce)):
-            flags["replayed"] = True
-            return deny()
+        if self._policy.require_single_use:
+            if not self._replay.check_and_insert(sha256_hex(token.nonce)):
+                flags["replayed"] = True
+                return deny()
 
         return VerifierDecision(
             valid=True,
