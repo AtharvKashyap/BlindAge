@@ -40,3 +40,6 @@ registry.local.*
 .idea/
 .vscode/
 *.swp
+
+# SDD scratch
+.superpowers/
