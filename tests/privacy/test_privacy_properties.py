@@ -21,10 +21,10 @@ from blindage.wallet.client import build_presentation, enroll, mint
 from blindage.wallet.vault import StoredToken, VaultData
 
 
-def mint_vault(issuer_http, count: int = 2) -> VaultData:
+def mint_vault(issuer_http, count: int = 2) -> tuple[VaultData, str]:
     eid = enroll(issuer_http, "2000-01-01")
     tokens = mint(issuer_http, eid, AgeClaim.AGE_OVER_18, AssuranceLevel.AAL2, "2026-Q3", count)
-    return VaultData(tokens=[StoredToken(token=t) for t in tokens])
+    return VaultData(tokens=[StoredToken(token=t) for t in tokens]), eid
 
 
 def redeem(site, vault: VaultData) -> tuple[Presentation, dict]:
@@ -52,17 +52,20 @@ def _all_keys(obj) -> set[str]:
 
 
 def test_verifier_never_receives_pii(issuer_http, site):
-    vault = mint_vault(issuer_http)
+    vault, _eid = mint_vault(issuer_http)
     presentation, _ = redeem(site, vault)
     payload = json.loads(presentation.model_dump_json())
     assert _all_keys(payload) & PII_FIELDS == set()
 
 
 def test_verifier_never_receives_enrollment_reference(issuer_http, site):
-    vault = mint_vault(issuer_http)
+    vault, eid = mint_vault(issuer_http)
     presentation, _ = redeem(site, vault)
-    # The enrollment id must never appear anywhere in what the site receives.
-    assert "enrollment" not in presentation.model_dump_json()
+    presentation_json = presentation.model_dump_json()
+    # The actual enrollment id value must never appear anywhere in what the
+    # site receives, not just the literal substring "enrollment".
+    assert eid not in presentation_json
+    assert "enrollment" not in presentation_json
 
 
 def test_issuer_request_schema_cannot_carry_domain():
@@ -74,7 +77,7 @@ def test_issuer_request_schema_cannot_carry_domain():
 
 
 def test_two_presentations_share_no_token_material(issuer_http, site):
-    vault = mint_vault(issuer_http, count=2)
+    vault, _eid = mint_vault(issuer_http, count=2)
     p1, _ = redeem(site, vault)
     p2, _ = redeem(site, vault)
     assert p1.token.nonce != p2.token.nonce
@@ -83,7 +86,7 @@ def test_two_presentations_share_no_token_material(issuer_http, site):
 
 
 def test_no_persistent_holder_identifier_across_presentations(issuer_http, site):
-    vault = mint_vault(issuer_http, count=2)
+    vault, _eid = mint_vault(issuer_http, count=2)
     p1, _ = redeem(site, vault)
     p2, _ = redeem(site, vault)
     d1 = json.loads(p1.model_dump_json())
@@ -92,8 +95,7 @@ def test_no_persistent_holder_identifier_across_presentations(issuer_http, site)
     # issuer-level data only — never a per-user value.
     identical = {
         k for k in _all_keys(d1)
-        if json.dumps(d1, sort_keys=True).count(f'"{k}"') and
-        _lookup_all(d1, k) == _lookup_all(d2, k)
+        if _lookup_all(d1, k) == _lookup_all(d2, k)
     }
     allowed_identical = {
         "version", "presentation_type", "required_claim", "claim",
@@ -134,7 +136,7 @@ def test_issuer_never_sees_final_token_values(issuer_http, site):
         return original_post(url, **kwargs)
 
     issuer_http.post = spying_post
-    vault = mint_vault(issuer_http, count=1)
+    vault, _eid = mint_vault(issuer_http, count=1)
     presentation, result = redeem(site, vault)
     assert result["decision"] == "ALLOW"
     issuance_traffic = " ".join(seen_by_issuer)
