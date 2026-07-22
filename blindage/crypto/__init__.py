@@ -15,6 +15,15 @@ from blindage.crypto.factory import (
     UnsupportedAlgorithmError,
     verifier_from_issuer_key,
 )
+from blindage.crypto.rsabssa import (
+    RSABSSA_ALGORITHM,
+    BlindSignatureError,
+    RsabssaTokenVerifier,
+    blind,
+    blind_sign,
+    finalize,
+    generate_blind_keypair,
+)
 
 __all__ = [
     "MOCK_ALGORITHM",
@@ -31,4 +40,11 @@ __all__ = [
     "generate_token_keypair",
     "UnsupportedAlgorithmError",
     "verifier_from_issuer_key",
+    "RSABSSA_ALGORITHM",
+    "BlindSignatureError",
+    "RsabssaTokenVerifier",
+    "blind",
+    "blind_sign",
+    "finalize",
+    "generate_blind_keypair",
 ]
