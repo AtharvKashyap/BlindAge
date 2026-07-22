@@ -48,14 +48,20 @@ def generate_blind_keypair(bits: int = 2048) -> tuple[str, str]:
 
 
 def _load_public(public_key_b64: str) -> rsa.RSAPublicKey:
-    key = serialization.load_der_public_key(b64u_decode(public_key_b64))
+    try:
+        key = serialization.load_der_public_key(b64u_decode(public_key_b64))
+    except (ValueError, TypeError) as exc:
+        raise BlindSignatureError("invalid public key material") from exc
     if not isinstance(key, rsa.RSAPublicKey):
         raise BlindSignatureError("not an RSA public key")
     return key
 
 
 def _load_private(private_key_b64: str) -> rsa.RSAPrivateKey:
-    key = serialization.load_der_private_key(b64u_decode(private_key_b64), None)
+    try:
+        key = serialization.load_der_private_key(b64u_decode(private_key_b64), None)
+    except (ValueError, TypeError) as exc:
+        raise BlindSignatureError("invalid private key material") from exc
     if not isinstance(key, rsa.RSAPrivateKey):
         raise BlindSignatureError("not an RSA private key")
     return key
@@ -107,7 +113,7 @@ def blind(public_key_b64: str, message: bytes) -> tuple[bytes, int]:
     if math.gcd(m, n) != 1:
         raise BlindSignatureError("invalid input: message not coprime with modulus")
     while True:
-        r = secrets.randbelow(n - 2) + 1
+        r = secrets.randbelow(n - 1) + 1  # RFC 9474 §4.1: r in [1, n-1]
         if math.gcd(r, n) == 1:
             break
     inv = pow(r, -1, n)

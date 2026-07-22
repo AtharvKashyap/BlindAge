@@ -60,15 +60,55 @@ def test_verifier_rejects_wrong_message_wrong_key_garbage():
 
 
 def test_signatures_unlinkable_to_blinded_values():
-    # What the signer sees (blinded, blind_sig) shares no bytes-substring
-    # relationship with the final signature.
-    blinded, inv = blind(PUB, b"m")
-    blind_sig = blind_sign(PRIV, blinded)
-    sig = finalize(PUB, b"m", blind_sig, inv)
-    assert sig != blind_sig and sig not in blind_sig and blind_sig not in sig
+    # Run the same message through the full protocol twice, with two
+    # independent blindings. RSA-PSS's random salt means the two final
+    # signatures differ byte-for-byte even for an identical message, and
+    # neither final signature equals the blind_sig the signer saw — so the
+    # signer's view (blinded, blind_sig) cannot be trivially matched to the
+    # unblinded output by simple equality. This does not itself prove
+    # cryptographic unlinkability; it only asserts observable non-equality.
+    blinded1, inv1 = blind(PUB, b"m")
+    blind_sig1 = blind_sign(PRIV, blinded1)
+    sig1 = finalize(PUB, b"m", blind_sig1, inv1)
+
+    blinded2, inv2 = blind(PUB, b"m")
+    blind_sig2 = blind_sign(PRIV, blinded2)
+    sig2 = finalize(PUB, b"m", blind_sig2, inv2)
+
+    verifier = RsabssaTokenVerifier("k1", PUB)
+    assert verifier.verify(b"m", sig1)
+    assert verifier.verify(b"m", sig2)
+    assert sig1 != sig2
+    assert sig1 != blind_sig1
+    assert sig2 != blind_sig2
 
 
 def test_verifier_protocol_conformance():
     v = RsabssaTokenVerifier("k1", PUB)
     assert v.algorithm == RSABSSA_ALGORITHM
     assert isinstance(v, TokenVerifier)
+
+
+def test_blind_rejects_malformed_key_b64_as_blind_signature_error():
+    with pytest.raises(BlindSignatureError):
+        blind("!!!notb64", b"m")
+
+
+def test_blind_sign_rejects_malformed_key_b64_as_blind_signature_error():
+    with pytest.raises(BlindSignatureError):
+        blind_sign("!!!", b"m")
+
+
+def test_finalize_rejects_malformed_key_b64_as_blind_signature_error():
+    with pytest.raises(BlindSignatureError):
+        finalize("!!!", b"m", b"x", 1)
+
+
+def test_verifier_init_rejects_malformed_key_b64_as_blind_signature_error():
+    with pytest.raises(BlindSignatureError):
+        RsabssaTokenVerifier("k", "!!!")
+
+
+def test_verifier_verify_returns_false_not_raise_on_garbage_signature():
+    v = RsabssaTokenVerifier("k1", PUB)
+    assert v.verify(b"m", b"garbage") is False
