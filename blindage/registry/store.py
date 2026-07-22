@@ -22,6 +22,7 @@ class TrustRegistry:
         except (KeyError, ValidationError) as exc:
             raise RegistryError(f"invalid registry contents: {exc}") from exc
         seen_issuer_ids: set[str] = set()
+        seen_material: set[str] = set()
         for issuer in issuers:
             if issuer.issuer_id in seen_issuer_ids:
                 raise RegistryError(f"duplicate issuer_id {issuer.issuer_id!r}")
@@ -39,6 +40,11 @@ class TrustRegistry:
                             f"duplicate (claim, assurance, epoch) tuple binding: {binding}"
                         )
                     seen_tuples.add(binding)
+                    if key.public_key in seen_material:
+                        raise RegistryError(
+                            f"key material reuse detected for key_id {key.key_id!r}"
+                        )
+                    seen_material.add(key.public_key)
         return cls({i.issuer_id: i for i in issuers})
 
     @classmethod

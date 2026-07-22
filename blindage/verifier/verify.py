@@ -2,7 +2,7 @@ import binascii
 import hashlib
 from datetime import datetime, timezone
 
-from blindage.crypto import b64u_decode, mock_verifier_from_public_key
+from blindage.crypto import b64u_decode, verifier_from_issuer_key
 from blindage.registry import TrustRegistry
 from blindage.schemas import (
     Decision,
@@ -80,13 +80,14 @@ class BlindAgeVerifier:
         if key is None:
             return deny()
 
-        verifier = mock_verifier_from_public_key(key.key_id, key.public_key)
         try:
-            signature_bytes = b64u_decode(token.signature)
+            verifier = verifier_from_issuer_key(key)
             flags["signature_valid"] = verifier.verify(
-                token_message(token.nonce), signature_bytes
+                token_message(token.nonce), b64u_decode(token.signature)
             )
         except (binascii.Error, ValueError):
+            # Covers malformed base64 signatures AND UnsupportedAlgorithmError
+            # (a ValueError subclass): both deny cleanly.
             flags["signature_valid"] = False
         if not flags["signature_valid"]:
             return deny()

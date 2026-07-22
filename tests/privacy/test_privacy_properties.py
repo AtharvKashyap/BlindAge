@@ -118,6 +118,22 @@ def _lookup_all(obj, key):
     return found
 
 
+def test_issuer_metadata_never_contains_private_key_material(issuer_http):
+    """Registry/well-known must never leak signing secrets for asymmetric keys.
+
+    (Mock-algorithm keys intentionally publish their symmetric secret — the
+    documented Phase 1 artifact — so this asserts on ed25519 keys only.)
+    """
+    meta = issuer_http.get("/.well-known/blindage-issuer.json").json()
+    for key in meta["keys"]:
+        if key["algorithm"] == "ed25519":
+            assert "private" not in json.dumps(key)
+            assert len(key["public_key"]) < 60  # a raw 32-byte public key, not a bundle
+    assert any(k["algorithm"] == "ed25519" for k in meta["keys"]), (
+        "fixture must include an ed25519 key or this test asserts nothing"
+    )
+
+
 @pytest.mark.xfail(
     strict=True,
     reason="Phase 1 mock issuance sends final token values (nonces) to the "

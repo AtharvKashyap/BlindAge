@@ -1,7 +1,7 @@
 import pytest
 from fastapi.testclient import TestClient
 
-from blindage.crypto import b64u_encode
+from blindage.crypto import generate_token_keypair
 from blindage.example_site.app import create_site
 from blindage.issuer.app import create_app as create_issuer
 from blindage.issuer.keys import IssuerKeyStore
@@ -9,15 +9,17 @@ from blindage.issuer.storage import EnrollmentStore
 from blindage.registry import TrustRegistry
 
 ISSUER_ID = "did:web:issuer.test"
-DEV_SECRET_18 = b"e" * 32
 DEV_KEY_18 = "dev-AGE_OVER_18-AAL2-2026-Q3"
+DEV_ED_PRIV, DEV_ED_PUB = generate_token_keypair()
 
 
 def dev_key_entries() -> list[dict]:
     return [
         {
             "key_id": DEV_KEY_18,
-            "secret_b64": b64u_encode(DEV_SECRET_18),
+            "algorithm": "ed25519",
+            "private_key_b64": DEV_ED_PRIV,
+            "public_key_b64": DEV_ED_PUB,
             "claim": "AGE_OVER_18",
             "assurance_level": "AAL2",
             "epoch": "2026-Q3",
@@ -43,8 +45,8 @@ def dev_registry() -> TrustRegistry:
                         {
                             "key_id": DEV_KEY_18,
                             "purpose": "token_signing",
-                            "algorithm": "mock-hmac-sha256",
-                            "public_key": b64u_encode(DEV_SECRET_18),
+                            "algorithm": "ed25519",
+                            "public_key": DEV_ED_PUB,
                             "claim": "AGE_OVER_18",
                             "assurance_level": "AAL2",
                             "epoch": "2026-Q3",

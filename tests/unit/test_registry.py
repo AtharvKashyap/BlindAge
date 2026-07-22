@@ -1,4 +1,5 @@
 import json
+import secrets
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -31,12 +32,12 @@ def issuer_dict(keys: list[dict]) -> dict:
     }
 
 
-def token_key(key_id="dev-AGE_OVER_18-AAL2-2026-Q3", claim="AGE_OVER_18") -> dict:
+def token_key(key_id="dev-AGE_OVER_18-AAL2-2026-Q3", claim="AGE_OVER_18", public_key=None) -> dict:
     return {
         "key_id": key_id,
         "purpose": "token_signing",
         "algorithm": "mock-hmac-sha256",
-        "public_key": b64u_encode(b"s" * 32),
+        "public_key": public_key if public_key is not None else b64u_encode(secrets.token_bytes(32)),
         "claim": claim,
         "assurance_level": "AAL2",
         "epoch": "2026-Q3",
@@ -162,3 +163,24 @@ def test_load_raises_registry_error_on_malformed_root_public_key(tmp_path: Path)
         TrustRegistry.load(
             tmp_path / "registry.json", tmp_path / "registry.sig", "!!!not-base64!!!"
         )
+
+
+def test_key_material_reuse_rejected_within_issuer():
+    # Same public key on two different tuples — MOD-1 requires unique material.
+    k1 = token_key()
+    k2 = token_key(key_id="dev-AGE_OVER_21-AAL2-2026-Q3", claim="AGE_OVER_21")
+    k2["public_key"] = k1["public_key"]
+    with pytest.raises(RegistryError, match="key material"):
+        TrustRegistry.from_dict(registry_dict([k1, k2]))
+
+
+def test_key_material_reuse_rejected_across_issuers():
+    k1 = token_key()
+    other = issuer_dict([token_key(key_id="other-key")])
+    other["issuer_id"] = "did:web:other.test"
+    data = registry_dict([k1])
+    data["issuers"].append(other)
+    # other issuer's key reuses the same public key bytes
+    data["issuers"][1]["keys"][0]["public_key"] = k1["public_key"]
+    with pytest.raises(RegistryError, match="key material"):
+        TrustRegistry.from_dict(data)

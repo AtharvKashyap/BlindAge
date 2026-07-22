@@ -21,12 +21,13 @@ class IssuerKey(BaseModel):
 
     @model_validator(mode="after")
     def _token_keys_need_binding(self) -> "IssuerKey":
-        if self.purpose == "token_signing" and not (
-            self.claim and self.assurance_level and self.epoch
-        ):
-            raise ValueError(
-                "token_signing keys must bind exactly one (claim, assurance_level, epoch)"
-            )
+        if self.purpose == "token_signing":
+            if self.claim is None or self.assurance_level is None or self.epoch is None:
+                raise ValueError(
+                    "token_signing keys must bind exactly one (claim, assurance_level, epoch)"
+                )
+            if not self.epoch:
+                raise ValueError("epoch must be a non-empty string")
         return self
 
 

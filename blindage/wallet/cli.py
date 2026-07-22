@@ -8,7 +8,7 @@ from blindage.schemas import AgeClaim, AssuranceLevel, VerifierChallenge
 from blindage.wallet.client import WalletError, build_presentation, enroll, mint
 from blindage.wallet.vault import StoredToken, VaultData, WalletVault
 
-app = typer.Typer(help="BlindAge wallet (Phase 1 — mock crypto, local dev only)")
+app = typer.Typer(help="BlindAge wallet (Phase 2, Ed25519 — local dev only, issuance not yet blind)")
 
 DEFAULT_VAULT = Path.home() / ".blindage" / "vault.blindage"
 

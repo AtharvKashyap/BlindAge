@@ -11,7 +11,7 @@ import argparse
 import json
 import secrets
 
-from blindage.crypto import b64u_encode
+from blindage.crypto import b64u_encode, generate_token_keypair
 from blindage.registry import generate_root_keypair, sign_registry
 
 CLAIMS = ["AGE_OVER_13", "AGE_OVER_16", "AGE_OVER_18", "AGE_OVER_21"]
@@ -24,6 +24,11 @@ def main() -> None:
     parser.add_argument("--valid-from", default="2026-07-01T00:00:00Z")
     parser.add_argument("--valid-until", default="2026-10-01T00:00:00Z")
     parser.add_argument("--out", default="config/dev")
+    parser.add_argument(
+        "--algorithm",
+        default="ed25519",
+        choices=["ed25519", "mock-hmac-sha256"],
+    )
     args = parser.parse_args()
 
     out = Path(args.out)
@@ -32,24 +37,42 @@ def main() -> None:
     key_entries = []
     registry_keys = []
     for claim in CLAIMS:
-        secret_b64 = b64u_encode(secrets.token_bytes(32))
         key_id = f"dev-{claim}-AAL2-{args.epoch}"
-        key_entries.append(
-            {
-                "key_id": key_id,
-                "secret_b64": secret_b64,
-                "claim": claim,
-                "assurance_level": "AAL2",
-                "epoch": args.epoch,
-                "valid_until": args.valid_until,
-            }
-        )
+        if args.algorithm == "ed25519":
+            private_b64, public_b64 = generate_token_keypair()
+            key_entries.append(
+                {
+                    "key_id": key_id,
+                    "algorithm": "ed25519",
+                    "private_key_b64": private_b64,
+                    "public_key_b64": public_b64,
+                    "claim": claim,
+                    "assurance_level": "AAL2",
+                    "epoch": args.epoch,
+                    "valid_until": args.valid_until,
+                }
+            )
+            registry_public = public_b64
+        else:
+            secret_b64 = b64u_encode(secrets.token_bytes(32))
+            key_entries.append(
+                {
+                    "key_id": key_id,
+                    "algorithm": "mock-hmac-sha256",
+                    "secret_b64": secret_b64,
+                    "claim": claim,
+                    "assurance_level": "AAL2",
+                    "epoch": args.epoch,
+                    "valid_until": args.valid_until,
+                }
+            )
+            registry_public = secret_b64  # mock mode: secret doubles as public key
         registry_keys.append(
             {
                 "key_id": key_id,
                 "purpose": "token_signing",
-                "algorithm": "mock-hmac-sha256",
-                "public_key": secret_b64,  # mock mode: secret doubles as public key
+                "algorithm": args.algorithm,
+                "public_key": registry_public,
                 "claim": claim,
                 "assurance_level": "AAL2",
                 "epoch": args.epoch,

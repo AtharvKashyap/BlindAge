@@ -59,6 +59,40 @@ def registry(status: str = "active") -> TrustRegistry:
     )
 
 
+def registry_dict_with_algorithm(algorithm: str) -> dict:
+    data = {
+        "version": "1.0",
+        "generated_at": "2026-07-21T00:00:00Z",
+        "issuers": [
+            {
+                "version": "1.0",
+                "issuer_id": ISSUER,
+                "legal_name": "Test Issuer",
+                "jurisdiction": "US",
+                "supported_claims": ["AGE_OVER_18"],
+                "assurance_levels": ["AAL2"],
+                "keys": [
+                    {
+                        "key_id": KEY_18,
+                        "purpose": "token_signing",
+                        "algorithm": algorithm,
+                        "public_key": b64u_encode(SECRET_18),
+                        "claim": "AGE_OVER_18",
+                        "assurance_level": "AAL2",
+                        "epoch": "2026-Q3",
+                        "valid_from": "2026-07-01T00:00:00Z",
+                        "valid_until": "2026-10-01T00:00:00Z",
+                    }
+                ],
+                "status": "active",
+                "valid_from": "2026-01-01T00:00:00Z",
+                "valid_until": "2027-01-01T00:00:00Z",
+            }
+        ],
+    }
+    return data
+
+
 def make_verifier(reg: TrustRegistry | None = None, audience: str = "example.test"):
     policy = VerifierPolicy(
         policy_id="p1",
@@ -298,3 +332,66 @@ def test_require_single_use_false_allows_replay():
     second = verifier.verify(present(cm, token))
     assert second.decision == Decision.ALLOW
     assert second.replayed is False
+
+
+def test_ed25519_token_verifies_end_to_end():
+    from blindage.crypto import Ed25519TokenSigner, generate_token_keypair
+
+    priv, pub = generate_token_keypair()
+    reg = TrustRegistry.from_dict(
+        {
+            "version": "1.0",
+            "generated_at": "2026-07-21T00:00:00Z",
+            "issuers": [
+                {
+                    "version": "1.0",
+                    "issuer_id": ISSUER,
+                    "legal_name": "Test Issuer",
+                    "jurisdiction": "US",
+                    "supported_claims": ["AGE_OVER_18"],
+                    "assurance_levels": ["AAL2"],
+                    "keys": [
+                        {
+                            "key_id": KEY_18,
+                            "purpose": "token_signing",
+                            "algorithm": "ed25519",
+                            "public_key": pub,
+                            "claim": "AGE_OVER_18",
+                            "assurance_level": "AAL2",
+                            "epoch": "2026-Q3",
+                            "valid_from": "2026-07-01T00:00:00Z",
+                            "valid_until": "2026-10-01T00:00:00Z",
+                        }
+                    ],
+                    "status": "active",
+                    "valid_from": "2026-01-01T00:00:00Z",
+                    "valid_until": "2027-01-01T00:00:00Z",
+                }
+            ],
+        }
+    )
+    verifier, cm = make_verifier(reg=reg)
+    signer = Ed25519TokenSigner(KEY_18, priv)
+    token = AgeToken(
+        claim=AgeClaim.AGE_OVER_18,
+        assurance_level=AssuranceLevel.AAL2,
+        epoch="2026-Q3",
+        issuer_id=ISSUER,
+        issuer_key_id=KEY_18,
+        nonce="ZWQyNTUxOS1ub25jZQ",
+        signature=b64u_encode(signer.sign(token_message("ZWQyNTUxOS1ub25jZQ"))),
+    )
+    decision = verifier.verify(present(cm, token))
+    assert decision.decision == Decision.ALLOW and decision.signature_valid
+
+
+def test_unsupported_key_algorithm_denies_cleanly():
+    # A registry key with an algorithm this verifier build doesn't know must
+    # produce DENY, not an exception. IssuerKey.algorithm is a free string,
+    # so craft the registry dict directly.
+    data = registry_dict_with_algorithm("post-quantum-future-alg")
+    reg = TrustRegistry.from_dict(data)
+    verifier, cm = make_verifier(reg=reg)
+    decision = verifier.verify(present(cm, signed_token()))
+    assert decision.decision == Decision.DENY
+    assert not decision.signature_valid

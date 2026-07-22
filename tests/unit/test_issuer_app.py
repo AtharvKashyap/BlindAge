@@ -1,12 +1,13 @@
+import json
 from concurrent.futures import ThreadPoolExecutor
 from datetime import date, timedelta
 
 import pytest
 from fastapi.testclient import TestClient
 
-from blindage.crypto import MockTokenVerifier, b64u_decode, b64u_encode
+from blindage.crypto import Ed25519TokenVerifier, MockTokenVerifier, b64u_decode, b64u_encode, generate_token_keypair
 from blindage.issuer.app import create_app
-from blindage.issuer.keys import IssuerKeyStore
+from blindage.issuer.keys import IssuerKeyStore, public_material
 from blindage.issuer.storage import EnrollmentStore
 from blindage.schemas import token_message
 
@@ -128,3 +129,55 @@ def test_enrollment_store_thread_safe_under_concurrent_access():
     for i, (enrollment_id, fetched) in enumerate(results):
         assert fetched == dobs[i]
         assert store.get_dob(enrollment_id) == dobs[i]
+
+
+ED_PRIV, ED_PUB = generate_token_keypair()
+
+
+def ed25519_entry() -> dict:
+    return {
+        "key_id": "dev-AGE_OVER_16-AAL2-2026-Q3",
+        "algorithm": "ed25519",
+        "private_key_b64": ED_PRIV,
+        "public_key_b64": ED_PUB,
+        "claim": "AGE_OVER_16",
+        "assurance_level": "AAL2",
+        "epoch": "2026-Q3",
+        "valid_until": "2026-10-01T00:00:00Z",
+    }
+
+
+@pytest.fixture()
+def ed_client() -> TestClient:
+    app = create_app(IssuerKeyStore([ed25519_entry()]), EnrollmentStore(":memory:"))
+    return TestClient(app)
+
+
+def test_ed25519_issuance_verifies_with_public_key(ed_client):
+    eid = enroll(ed_client, "2000-01-01")
+    body = issue_body(eid, claim="AGE_OVER_16")
+    resp = ed_client.post("/v1/tokens/issue", json=body)
+    assert resp.status_code == 200
+    out = resp.json()
+    verifier = Ed25519TokenVerifier(out["issuer_key_id"], ED_PUB)
+    for nonce, sig in zip(body["nonces"], out["signatures"]):
+        assert verifier.verify(token_message(nonce), b64u_decode(sig))
+
+
+def test_well_known_publishes_public_key_not_private(ed_client):
+    meta = ed_client.get("/.well-known/blindage-issuer.json").json()
+    (key,) = meta["keys"]
+    assert key["algorithm"] == "ed25519"
+    assert key["public_key"] == ED_PUB
+    assert ED_PRIV not in json.dumps(meta)
+
+
+def test_unknown_entry_algorithm_fails_fast():
+    entry = ed25519_entry()
+    entry["algorithm"] = "rot13"
+    with pytest.raises(ValueError, match="algorithm"):
+        IssuerKeyStore([entry])
+
+
+def test_public_material_helper():
+    assert public_material(ed25519_entry()) == ("ed25519", ED_PUB)
