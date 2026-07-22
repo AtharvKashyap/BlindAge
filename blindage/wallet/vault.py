@@ -1,5 +1,7 @@
 import json
+import os
 import secrets
+import tempfile
 from pathlib import Path
 
 from argon2.low_level import Type, hash_secret_raw
@@ -54,7 +56,7 @@ class WalletVault:
                 b64u_decode(envelope["nonce"]), b64u_decode(envelope["ciphertext"]), None
             )
             return VaultData.model_validate_json(plaintext)
-        except (InvalidTag, KeyError, ValueError) as exc:
+        except (InvalidTag, KeyError, ValueError, TypeError) as exc:
             raise VaultError(f"cannot open vault: {exc}") from exc
 
     def save(self, data: VaultData) -> None:
@@ -70,4 +72,16 @@ class WalletVault:
             "nonce": b64u_encode(nonce),
             "ciphertext": b64u_encode(ciphertext),
         }
-        self._path.write_text(json.dumps(envelope))
+        self._path.parent.mkdir(parents=True, exist_ok=True)
+        fd, tmp_name = tempfile.mkstemp(
+            dir=self._path.parent, prefix=f".{self._path.name}.", suffix=".tmp"
+        )
+        tmp_path = Path(tmp_name)
+        try:
+            with os.fdopen(fd, "w") as fh:
+                fh.write(json.dumps(envelope))
+            os.chmod(tmp_path, 0o600)
+            os.replace(tmp_path, self._path)
+        except BaseException:
+            tmp_path.unlink(missing_ok=True)
+            raise

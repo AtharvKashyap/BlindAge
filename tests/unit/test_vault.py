@@ -1,4 +1,6 @@
 import json
+import stat
+import sys
 from pathlib import Path
 
 import pytest
@@ -61,3 +63,24 @@ def test_spent_state_persists_inside_vault(tmp_path: Path):
     data.tokens[0].spent = True
     vault.save(data)
     assert WalletVault(path, "pass").load().tokens[0].spent is True
+
+
+def test_load_raises_vault_error_on_non_dict_json(tmp_path: Path):
+    path = tmp_path / "vault.blindage"
+    path.write_text(json.dumps([1, 2, 3]))
+    vault = WalletVault(path, "pass")
+    with pytest.raises(VaultError):
+        vault.load()
+
+
+def test_save_leaves_no_temp_file_and_sets_restrictive_permissions(tmp_path: Path):
+    path = tmp_path / "vault.blindage"
+    vault = WalletVault(path, "pass")
+    vault.save(VaultData(tokens=[StoredToken(token=make_token())]))
+
+    leftover = list(tmp_path.glob("*.tmp"))
+    assert leftover == []
+
+    if sys.platform != "win32":
+        mode = stat.S_IMODE(path.stat().st_mode)
+        assert mode == 0o600
