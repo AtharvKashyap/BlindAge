@@ -39,7 +39,12 @@ test("approveRequest returns error when no eligible token", () => {
 });
 
 test("approveRequest does not spend a token when it errors", () => {
-  const tokens = [token("x", { claim: "AGE_OVER_13" })];
+  const tokens = [token("x", { claim: "AGE_OVER_13" }), token("y", { spent: true })];
+  const before = tokens.map((t) => ({ nonce: t.nonce, spent: t.spent }));
   const r = approveRequest(tokens, challenge(), "2026-07-22T20:01:00Z");
   assert.ok(r.error);
+  assert.equal(r.presentation, undefined);
+  assert.equal(r.tokens, undefined);
+  const after = tokens.map((t) => ({ nonce: t.nonce, spent: t.spent }));
+  assert.deepEqual(after, before);
 });

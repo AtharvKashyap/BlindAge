@@ -41,6 +41,8 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       chrome.action.setBadgeText({ tabId: msg.tabId, text: "" });
       await chrome.tabs.sendMessage(msg.tabId, { type: "deliver_presentation", presentation: result.presentation });
       sendResponse({ ok: true });
+    } else {
+      sendResponse({ ok: false, reason: "unknown message type" });
     }
   })();
   return true; // async sendResponse
