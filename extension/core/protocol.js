@@ -88,6 +88,17 @@ export function buildPresentation(token, challenge, nowIso = new Date().toISOStr
   };
 }
 
+export function isValidToken(t) {
+  if (!t || typeof t !== "object") return false;
+  if (!AGE_CLAIMS.includes(t.claim)) return false;
+  if (!(t.assurance_level in ASSURANCE_ORDER)) return false;
+  const requiredStrings = ["nonce", "signature", "epoch", "issuer_id", "issuer_key_id"];
+  for (const field of requiredStrings) {
+    if (typeof t[field] !== "string" || t[field].length === 0) return false;
+  }
+  return true;
+}
+
 export function consentSummary(challenge, siteHost) {
   return {
     site: normalizeOrigin(siteHost),

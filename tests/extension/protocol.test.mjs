@@ -8,6 +8,7 @@ import {
   selectToken,
   buildPresentation,
   consentSummary,
+  isValidToken,
 } from "../../extension/core/protocol.js";
 
 const NOW = Date.parse("2026-07-22T20:00:00Z");
@@ -101,6 +102,18 @@ test("buildPresentation matches the Python schema shape", () => {
     challenge_id: "11111111-1111-1111-1111-111111111111",
     timestamp: "2026-07-22T20:01:00Z",
   });
+});
+
+test("isValidToken accepts a well-formed token", () => {
+  assert.equal(isValidToken(token()), true);
+});
+
+test("isValidToken rejects an unknown claim", () => {
+  assert.equal(isValidToken(token({ claim: "AGE_OVER_99" })), false);
+});
+
+test("isValidToken rejects a missing nonce", () => {
+  assert.equal(isValidToken(token({ nonce: "" })), false);
 });
 
 test("consentSummary lists what the site will and will not receive", () => {

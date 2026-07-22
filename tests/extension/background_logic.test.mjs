@@ -38,6 +38,35 @@ test("approveRequest returns error when no eligible token", () => {
   assert.ok(!r.presentation);
 });
 
+test("mergeTokens drops a token with an unknown claim", () => {
+  const { tokens, added } = mergeTokens([], [token("a", { claim: "AGE_OVER_99" })]);
+  assert.equal(tokens.length, 0);
+  assert.equal(added, 0);
+});
+
+test("mergeTokens drops a token with a non-string nonce", () => {
+  const { tokens, added } = mergeTokens([], [token(123)]);
+  assert.equal(tokens.length, 0);
+  assert.equal(added, 0);
+});
+
+test("mergeTokens drops a token missing signature", () => {
+  const { tokens, added } = mergeTokens([], [token("a", { signature: "" })]);
+  assert.equal(tokens.length, 0);
+  assert.equal(added, 0);
+});
+
+test("mergeTokens still counts valid tokens alongside invalid ones", () => {
+  const { tokens, added } = mergeTokens([], [
+    token("valid1"),
+    token("bad", { claim: "nope" }),
+    token("valid2"),
+  ]);
+  assert.equal(tokens.length, 2);
+  assert.equal(added, 2);
+  assert.deepEqual(tokens.map((t) => t.nonce).sort(), ["valid1", "valid2"]);
+});
+
 test("approveRequest does not spend a token when it errors", () => {
   const tokens = [token("x", { claim: "AGE_OVER_13" }), token("y", { spent: true })];
   const before = tokens.map((t) => ({ nonce: t.nonce, spent: t.spent }));

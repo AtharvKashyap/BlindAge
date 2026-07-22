@@ -16,9 +16,22 @@ async function renderInventory() {
   }
   const el = document.getElementById("inventory");
   const entries = Object.entries(counts);
-  el.innerHTML = entries.length
-    ? entries.map(([c, n]) => `<div>${c}: <strong>${n}</strong> unused</div>`).join("")
-    : "<small>none — import some below</small>";
+  el.textContent = "";
+  if (!entries.length) {
+    const small = document.createElement("small");
+    small.textContent = "none — import some below";
+    el.appendChild(small);
+    return;
+  }
+  for (const [claim, count] of entries) {
+    const row = document.createElement("div");
+    const strong = document.createElement("strong");
+    strong.textContent = String(count);
+    row.appendChild(document.createTextNode(`${claim}: `));
+    row.appendChild(strong);
+    row.appendChild(document.createTextNode(" unused"));
+    el.appendChild(row);
+  }
 }
 
 async function renderPending() {

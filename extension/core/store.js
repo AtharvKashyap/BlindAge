@@ -1,9 +1,10 @@
-import { selectToken, buildPresentation } from "./protocol.js";
+import { selectToken, buildPresentation, isValidToken } from "./protocol.js";
 
 export function mergeTokens(existing, incoming) {
   const byNonce = new Map((existing || []).map((t) => [t.nonce, t]));
   let added = 0;
   for (const t of incoming || []) {
+    if (!isValidToken(t)) continue;
     if (!byNonce.has(t.nonce)) {
       byNonce.set(t.nonce, { ...t, spent: t.spent ?? false });
       added += 1;
