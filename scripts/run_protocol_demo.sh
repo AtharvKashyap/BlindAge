@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scripts/run_protocol_demo.sh — end-to-end BlindAge Phase 1 demo (mock crypto).
+# scripts/run_protocol_demo.sh — end-to-end BlindAge demo (RFC 9474 blind issuance).
 set -euo pipefail
 cd "$(dirname "$0")/.."
 

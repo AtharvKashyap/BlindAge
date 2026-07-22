@@ -422,9 +422,13 @@ def test_default_policy_rejects_mock_algorithm():
     assert not decision.signature_valid
 
 
-def test_policy_default_allowlist_contents():
+def test_policy_default_allowlist_is_blind_only():
+    # A default verifier accepts ONLY the blind algorithm, so double anonymity
+    # holds unless an operator explicitly opts into a non-blind algorithm.
     policy = VerifierPolicy(
         policy_id="p", required_claim=AgeClaim.AGE_OVER_18,
         minimum_assurance_level=AssuranceLevel.AAL2, trusted_issuers=[],
     )
-    assert policy.allowed_algorithms == ["rsabssa-sha384-pss-deterministic", "ed25519"]
+    assert policy.allowed_algorithms == ["rsabssa-sha384-pss-deterministic"]
+    assert "ed25519" not in policy.allowed_algorithms
+    assert "mock-hmac-sha256" not in policy.allowed_algorithms

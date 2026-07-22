@@ -28,3 +28,22 @@ issuer's BlindSign leaks timing. Acceptable for local development only.
 crate `blind-rsa-signatures` (an RFC 9474 author) via PyO3/maturin behind
 the same `blind/blind_sign/finalize` interface, or use Cloudflare CIRCL as
 an issuer-side sidecar. Tracked in docs/roadmap.md.
+
+## 2026-07-22 — Default verifier policy is blind-algorithm-only
+
+**Decision:** `VerifierPolicy.allowed_algorithms` defaults to
+`["rsabssa-sha384-pss-deterministic"]` — the blind algorithm only. `ed25519`
+and `mock-hmac-sha256` remain fully supported but must be named explicitly by
+an operator who consciously wants them.
+
+**Why:** ed25519 issuance is not blind — the issuer sees the token nonce at
+signing, so ed25519 tokens are *signed but linkable*. If a default verifier
+accepted ed25519, an operator could provision non-blind keys and pass
+verification while silently failing the double-anonymity property that is the
+whole point of the system (constitution rule #1). Making the default
+blind-only means unlinkability holds unless someone opts out on purpose.
+
+**Effect:** the dev generator, shared test fixtures, and the example site all
+use rsabssa keys, so the delivered default path is double-anonymous
+end-to-end. Non-blind algorithms stay available for interop/testing via an
+explicit `allowed_algorithms` list.
