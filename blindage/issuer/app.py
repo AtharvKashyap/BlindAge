@@ -3,9 +3,9 @@ from datetime import date, datetime, timezone
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, ConfigDict
 
-from blindage.crypto import MOCK_ALGORITHM, b64u_encode
+from blindage.crypto import b64u_encode
 from blindage.issuer.eligibility import eligible_claims
-from blindage.issuer.keys import IssuerKeyStore
+from blindage.issuer.keys import IssuerKeyStore, public_material
 from blindage.issuer.storage import EnrollmentStore
 from blindage.schemas import TokenIssueRequest, TokenIssueResponse, token_message
 
@@ -66,21 +66,22 @@ def create_app(
 
     @app.get("/.well-known/blindage-issuer.json")
     def well_known() -> dict:
-        keys = [
-            {
-                "key_id": e["key_id"],
-                "purpose": "token_signing",
-                "algorithm": MOCK_ALGORITHM,
-                # Mock mode only: the shared secret doubles as the "public key".
-                "public_key": e["secret_b64"],
-                "claim": e["claim"],
-                "assurance_level": e["assurance_level"],
-                "epoch": e["epoch"],
-                "valid_from": "2026-07-01T00:00:00Z",
-                "valid_until": e["valid_until"],
-            }
-            for e in key_store.all_entries()
-        ]
+        keys = []
+        for e in key_store.all_entries():
+            algorithm, public_key = public_material(e)
+            keys.append(
+                {
+                    "key_id": e["key_id"],
+                    "purpose": "token_signing",
+                    "algorithm": algorithm,
+                    "public_key": public_key,
+                    "claim": e["claim"],
+                    "assurance_level": e["assurance_level"],
+                    "epoch": e["epoch"],
+                    "valid_from": "2026-07-01T00:00:00Z",
+                    "valid_until": e["valid_until"],
+                }
+            )
         return {
             "version": "1.0",
             "issuer_id": issuer_id,
