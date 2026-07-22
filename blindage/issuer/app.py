@@ -22,7 +22,7 @@ def create_app(
     enrollment_store: EnrollmentStore,
     issuer_id: str = "did:web:issuer.test",
 ) -> FastAPI:
-    app = FastAPI(title="BlindAge Issuer (Phase 2, Ed25519 — issuance not yet blind)")
+    app = FastAPI(title="BlindAge Issuer (Phase 3, blind issuance)")
 
     @app.post("/v1/enrollment", status_code=201)
     def enroll(req: EnrollmentRequest) -> dict:

@@ -7,11 +7,14 @@ once and issues unlinkable, single-use anonymous age tokens. Websites learn
 only whether the user satisfies a threshold (e.g. `AGE_OVER_18`) — never
 identity. The issuer never learns where tokens are used.
 
-> **Status: Phase 2 (Ed25519 tokens).** Tokens now carry real Ed25519
-> signatures; the registry and issuer metadata publish only public keys.
-> Issuance is still NOT blind — the issuer sees token values at signing, so
-> the double-anonymity property (and the 1 expected XFAIL that tracks it)
-> arrives with Phase 3 blind signatures (RFC 9474). Do not deploy yet.
+> **Status: Phase 3 (blind signatures — double anonymity is live).** The
+> wallet blinds token messages (RFC 9474 RSABSSA); the issuer signs values
+> it cannot read; websites verify standard RSA-PSS signatures. The issuer
+> can no longer link issuance to redemption — the property this project
+> exists for. Conformance is proven against RFC 9474 official test
+> vectors. Still not production-ready: Python's big-int math is not
+> constant-time (see docs/decisions.md), assurance proofing is simulated,
+> and there is no browser extension yet. Do not deploy.
 >
 > BlindAge provides privacy-preserving age *assurance*, not perfect age
 > *enforcement* — it cannot fully prevent voluntary token sharing. The honest
@@ -23,7 +26,7 @@ identity. The issuer never learns where tokens are used.
 ```bash
 python3 -m venv .venv
 .venv/bin/pip install -e ".[dev]"
-.venv/bin/pytest                       # full suite; 1 XFAIL is expected (issuer sees token values until Phase 3)
+.venv/bin/pytest                       # full suite
 ./scripts/run_protocol_demo.sh         # end-to-end demo: enroll → mint → prove → redeem → replay-reject
 ```
 
