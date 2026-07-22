@@ -47,3 +47,20 @@ blind-only means unlinkability holds unless someone opts out on purpose.
 use rsabssa keys, so the delivered default path is double-anonymous
 end-to-end. Non-blind algorithms stay available for interop/testing via an
 explicit `allowed_algorithms` list.
+
+## 2026-07-22 — In-extension blind minting: pure-JS RSABSSA (Approach A)
+
+**Decision:** Port RSABSSA-SHA384-PSS-Deterministic (RFC 9474) to pure JavaScript in the
+extension so it can mint tokens in-browser, gated byte-for-byte by the same official
+RFC 9474 Appendix A test vectors used for the Python implementation.
+
+**Why:** For a browser-extension-only everyday tool the extension must blind + mint itself
+(not depend on the CLI + manual export/import). This mirrors the Python decision (implement
+from spec, prove against Appendix A vectors) — no new toolchain, and checkable against the
+existing reference implementation + committed vectors.
+
+**Known limitation:** JS `BigInt` arithmetic is not constant-time (parallel to the Python
+caveat). Acceptable for the dev-stage tool.
+
+**Production path (pre-deployment gate):** replace the pure-JS RSABSSA with a WASM build of
+an audited native implementation, mirroring the Python PyO3/native-wrap gate.

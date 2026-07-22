@@ -19,13 +19,28 @@ Phases (spec §14, `docs/superpowers/specs/2026-07-21-blindage-design.md`):
    vanilla JS, no build step; detects a site's age gate, consent UI, origin/expiry
    validation, token inventory; example site serves HTML age gates; `blindage export`
    feeds tokens in; extension core unit-tested under Node and wired into CI).
-5. **Signed registry distribution** — download, root-signature verification, caching,
-   rollback detection, revocation handling (Phase 1 shipped only the local static file).
-6. **Blockchain registry** — issuer registry / revocation-root / transparency contracts,
+**Everyday-user track** (design: `docs/superpowers/specs/2026-07-22-everyday-user-design.md`).
+Reprioritized to turn the demo into a self-service, extension-only tool: prove age once,
+then one-click anonymous presentations everywhere.
+
+5. **In-extension blind minting** — port RSABSSA-SHA384-PSS-Deterministic to pure JS
+   (Approach A), gated byte-for-byte by the committed RFC 9474 Appendix A vectors, so the
+   extension mints tokens itself (retires the CLI export/import dependency). *Next slice.*
+6. **Self-service onboarding** — extension "Get tokens" flow: choose issuer → enroll →
+   mint batch → store, in-browser.
+7. **Real identity-proofing adapter** — OIDC/mDL age check on the issuer replacing
+   `--test-dob`; enrollment persistence so top-up needs no re-proof.
+8. **Registry-sourced issuer trust + inventory/auto-top-up** — the extension lists only
+   registry-approved issuers (absorbs the former "signed registry distribution": download,
+   root-signature verification, caching, rollback detection, revocation) and auto-mints
+   when low.
+
+**Trust/hardening track** (unchanged, follows the everyday-user track):
+- **Blockchain registry** — issuer registry / revocation-root / transparency contracts,
    timelocked governance, mirrors. User data stays entirely off-chain.
-7. **Selective-disclosure verifiable credentials** — reusable VC mode, randomized
+- **Selective-disclosure verifiable credentials** — reusable VC mode, randomized
    presentations, no stable credential IDs.
-8. **Hybrid post-quantum signatures** — ML-DSA + Ed25519 on the trust layer, downgrade
+- **Hybrid post-quantum signatures** — ML-DSA + Ed25519 on the trust layer, downgrade
    protection.
 - **Research** — ZK age-comparison proofs; PQ anonymous credentials.
 
