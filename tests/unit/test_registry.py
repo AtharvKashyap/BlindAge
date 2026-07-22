@@ -103,3 +103,62 @@ def test_duplicate_key_id_rejected():
     keys = [token_key(), token_key(claim="AGE_OVER_21")]  # same key_id, different tuple
     with pytest.raises(RegistryError, match="key_id"):
         TrustRegistry.from_dict(registry_dict(keys))
+
+
+def test_duplicate_issuer_id_rejected():
+    # Two distinct, individually-valid issuer entries sharing an issuer_id
+    # must be rejected, not silently collapsed by the dict comprehension.
+    data = {
+        "version": "1.0",
+        "generated_at": "2026-07-21T00:00:00Z",
+        "issuers": [issuer_dict([token_key()]), issuer_dict([token_key()])],
+    }
+    with pytest.raises(RegistryError, match="issuer_id"):
+        TrustRegistry.from_dict(data)
+
+
+def test_verify_registry_signature_rejects_malformed_base64_signature():
+    _, pub = generate_root_keypair()
+    assert verify_registry_signature(registry_dict(), "!!!not-base64!!!", pub) is False
+
+
+def test_verify_registry_signature_rejects_malformed_public_key():
+    priv, _ = generate_root_keypair()
+    data = registry_dict()
+    sig = sign_registry(data, priv)
+    assert verify_registry_signature(data, sig, "!!!not-base64!!!") is False
+
+
+def test_load_raises_registry_error_on_malformed_json(tmp_path: Path):
+    priv, pub = generate_root_keypair()
+    (tmp_path / "registry.json").write_text("{not json")
+    (tmp_path / "registry.sig").write_text(sign_registry(registry_dict(), priv))
+    with pytest.raises(RegistryError):
+        TrustRegistry.load(tmp_path / "registry.json", tmp_path / "registry.sig", pub)
+
+
+def test_load_raises_registry_error_on_missing_registry_file(tmp_path: Path):
+    _, pub = generate_root_keypair()
+    (tmp_path / "registry.sig").write_text("somesig")
+    with pytest.raises(RegistryError):
+        TrustRegistry.load(tmp_path / "missing.json", tmp_path / "registry.sig", pub)
+
+
+def test_load_raises_registry_error_on_malformed_signature_file(tmp_path: Path):
+    _, pub = generate_root_keypair()
+    data = registry_dict()
+    (tmp_path / "registry.json").write_text(json.dumps(data))
+    (tmp_path / "registry.sig").write_text("!!!not-base64!!!")
+    with pytest.raises(RegistryError):
+        TrustRegistry.load(tmp_path / "registry.json", tmp_path / "registry.sig", pub)
+
+
+def test_load_raises_registry_error_on_malformed_root_public_key(tmp_path: Path):
+    priv, pub = generate_root_keypair()
+    data = registry_dict()
+    (tmp_path / "registry.json").write_text(json.dumps(data))
+    (tmp_path / "registry.sig").write_text(sign_registry(data, priv))
+    with pytest.raises(RegistryError):
+        TrustRegistry.load(
+            tmp_path / "registry.json", tmp_path / "registry.sig", "!!!not-base64!!!"
+        )

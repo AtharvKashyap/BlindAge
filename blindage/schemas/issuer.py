@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, model_validator
 
@@ -9,7 +10,7 @@ class IssuerKey(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     key_id: str
-    purpose: str  # "token_signing" | "registry"
+    purpose: Literal["token_signing", "registry"]
     algorithm: str
     public_key: str
     claim: AgeClaim | None = None

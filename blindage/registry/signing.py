@@ -1,3 +1,5 @@
+import binascii
+
 from cryptography.hazmat.primitives.asymmetric.ed25519 import (
     Ed25519PrivateKey,
     Ed25519PublicKey,
@@ -23,9 +25,9 @@ def sign_registry(registry_dict: dict, private_key_b64: str) -> str:
 def verify_registry_signature(
     registry_dict: dict, signature_b64: str, public_key_b64: str
 ) -> bool:
-    public = Ed25519PublicKey.from_public_bytes(b64u_decode(public_key_b64))
     try:
+        public = Ed25519PublicKey.from_public_bytes(b64u_decode(public_key_b64))
         public.verify(b64u_decode(signature_b64), canonical_json_bytes(registry_dict))
         return True
-    except InvalidSignature:
+    except (InvalidSignature, binascii.Error, ValueError):
         return False

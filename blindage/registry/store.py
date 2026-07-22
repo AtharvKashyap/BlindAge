@@ -21,7 +21,11 @@ class TrustRegistry:
             issuers = [IssuerMetadata.model_validate(i) for i in data["issuers"]]
         except (KeyError, ValidationError) as exc:
             raise RegistryError(f"invalid registry contents: {exc}") from exc
+        seen_issuer_ids: set[str] = set()
         for issuer in issuers:
+            if issuer.issuer_id in seen_issuer_ids:
+                raise RegistryError(f"duplicate issuer_id {issuer.issuer_id!r}")
+            seen_issuer_ids.add(issuer.issuer_id)
             seen_ids: set[str] = set()
             seen_tuples: set[tuple] = set()
             for key in issuer.keys:
@@ -41,11 +45,20 @@ class TrustRegistry:
     def load(
         cls, registry_path: Path, signature_path: Path, root_public_key_b64: str
     ) -> "TrustRegistry":
-        data = json.loads(Path(registry_path).read_text())
-        signature = Path(signature_path).read_text().strip()
-        if not verify_registry_signature(data, signature, root_public_key_b64):
-            raise RegistryError("registry signature verification failed")
-        return cls.from_dict(data)
+        try:
+            data = json.loads(Path(registry_path).read_text())
+            signature = Path(signature_path).read_text().strip()
+            if not verify_registry_signature(data, signature, root_public_key_b64):
+                raise RegistryError("registry signature verification failed")
+            return cls.from_dict(data)
+        except RegistryError:
+            raise
+        except (FileNotFoundError, OSError) as exc:
+            raise RegistryError(f"failed to read registry files: {exc}") from exc
+        except json.JSONDecodeError as exc:
+            raise RegistryError(f"malformed registry JSON: {exc}") from exc
+        except (TypeError, ValueError) as exc:
+            raise RegistryError(f"invalid registry input: {exc}") from exc
 
     def get_issuer(self, issuer_id: str) -> IssuerMetadata | None:
         return self._issuers.get(issuer_id)
