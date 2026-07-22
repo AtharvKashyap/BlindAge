@@ -11,6 +11,10 @@ from blindage.crypto.ed25519 import (
     Ed25519TokenVerifier,
     generate_token_keypair,
 )
+from blindage.crypto.factory import (
+    UnsupportedAlgorithmError,
+    verifier_from_issuer_key,
+)
 
 __all__ = [
     "MOCK_ALGORITHM",
@@ -25,4 +29,6 @@ __all__ = [
     "Ed25519TokenSigner",
     "Ed25519TokenVerifier",
     "generate_token_keypair",
+    "UnsupportedAlgorithmError",
+    "verifier_from_issuer_key",
 ]
