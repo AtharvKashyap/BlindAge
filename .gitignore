@@ -43,3 +43,5 @@ registry.local.*
 
 # SDD scratch
 .superpowers/
+
+config/dev/
