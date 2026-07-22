@@ -129,6 +129,9 @@ def test_issuer_metadata_never_contains_private_key_material(issuer_http):
         if key["algorithm"] == "ed25519":
             assert "private" not in json.dumps(key)
             assert len(key["public_key"]) < 60  # a raw 32-byte public key, not a bundle
+    assert any(k["algorithm"] == "ed25519" for k in meta["keys"]), (
+        "fixture must include an ed25519 key or this test asserts nothing"
+    )
 
 
 @pytest.mark.xfail(
