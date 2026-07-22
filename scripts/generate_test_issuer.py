@@ -1,8 +1,15 @@
-"""Generate dev issuer keys + signed registry under config/dev/. Dev only."""
+"""Generate dev issuer keys + signed registry under config/dev/. Dev only.
+
+config/dev/ is gitignored; in mock mode the registry 'public_key' IS the HMAC
+secret (Phase 1 only, closed by Phase 3 blind signatures).
+"""
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))  # robust against editable-install .pth quirks
+
 import argparse
 import json
 import secrets
-from pathlib import Path
 
 from blindage.crypto import b64u_encode
 from blindage.registry import generate_root_keypair, sign_registry
