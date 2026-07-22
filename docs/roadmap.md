@@ -15,8 +15,10 @@ Phases (spec §14, `docs/superpowers/specs/2026-07-21-blindage-design.md`):
    official test vectors; issuance↔redemption unlinkability now holds — the former xfail
    unlinkability test is a permanent CI-blocking guarantee; verifier enforces an algorithm
    allowlist; decision log at `docs/decisions.md`).
-4. **Browser extension** — TypeScript + Vite; consent UI, origin validation, token
-   inventory.
+4. **Browser extension** — ✅ complete (presentation-only Manifest V3 extension in
+   vanilla JS, no build step; detects a site's age gate, consent UI, origin/expiry
+   validation, token inventory; example site serves HTML age gates; `blindage export`
+   feeds tokens in; extension core unit-tested under Node and wired into CI).
 5. **Signed registry distribution** — download, root-signature verification, caching,
    rollback detection, revocation handling (Phase 1 shipped only the local static file).
 6. **Blockchain registry** — issuer registry / revocation-root / transparency contracts,
@@ -59,3 +61,5 @@ physical_token_demo/         # optional low-assurance demo module (clearly label
 - Multi-process deployments need a shared challenge store + shared replay cache (Phase 1
   ChallengeManager is in-memory, single-process).
 - Cleanups: vault cleanup-branch test, PII test value-level (not just key-name) checks.
+- Extension: in-browser blind minting (WASM of a reviewed RFC 9474 impl) and
+  TypeScript+Vite migration.
