@@ -50,3 +50,13 @@ def test_unknown_algorithm_raises_unsupported():
     with pytest.raises(UnsupportedAlgorithmError):
         verifier_from_issuer_key(make_key("rsa-4096", "cGs"))
     assert issubclass(UnsupportedAlgorithmError, ValueError)
+
+
+def test_dispatches_rsabssa():
+    from blindage.crypto import RsabssaTokenVerifier, generate_blind_keypair
+
+    _, pub = generate_blind_keypair(2048)
+    verifier = verifier_from_issuer_key(
+        make_key("rsabssa-sha384-pss-deterministic", pub)
+    )
+    assert isinstance(verifier, RsabssaTokenVerifier)

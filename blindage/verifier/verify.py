@@ -80,6 +80,9 @@ class BlindAgeVerifier:
         if key is None:
             return deny()
 
+        if key.algorithm not in self._policy.allowed_algorithms:
+            return deny()
+
         try:
             verifier = verifier_from_issuer_key(key)
             flags["signature_valid"] = verifier.verify(

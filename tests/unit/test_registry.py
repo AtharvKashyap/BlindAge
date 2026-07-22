@@ -184,3 +184,17 @@ def test_key_material_reuse_rejected_across_issuers():
     data["issuers"][1]["keys"][0]["public_key"] = k1["public_key"]
     with pytest.raises(RegistryError, match="key material"):
         TrustRegistry.from_dict(data)
+
+
+def test_cross_purpose_key_material_collision_rejected():
+    tk = token_key()
+    reg_key = {
+        "key_id": "registry-key-1",
+        "purpose": "registry",
+        "algorithm": "ed25519",
+        "public_key": tk["public_key"],  # collides with the token key
+        "valid_from": "2026-01-01T00:00:00Z",
+        "valid_until": "2027-01-01T00:00:00Z",
+    }
+    with pytest.raises(RegistryError, match="key material"):
+        TrustRegistry.from_dict(registry_dict([tk, reg_key]))

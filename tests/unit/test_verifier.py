@@ -99,6 +99,11 @@ def make_verifier(reg: TrustRegistry | None = None, audience: str = "example.tes
         required_claim=AgeClaim.AGE_OVER_18,
         minimum_assurance_level=AssuranceLevel.AAL2,
         trusted_issuers=[ISSUER],
+        allowed_algorithms=[
+            "mock-hmac-sha256",
+            "rsabssa-sha384-pss-deterministic",
+            "ed25519",
+        ],
     )
     cm = ChallengeManager(audience=audience)
     return (
@@ -284,6 +289,7 @@ def test_require_domain_binding_false_allows_wrong_audience_and_no_challenge():
         minimum_assurance_level=AssuranceLevel.AAL2,
         trusted_issuers=[ISSUER],
         require_domain_binding=False,
+        allowed_algorithms=["mock-hmac-sha256"],
     )
     cm = ChallengeManager(audience="example.test")
     verifier = BlindAgeVerifier(
@@ -317,6 +323,7 @@ def test_require_single_use_false_allows_replay():
         minimum_assurance_level=AssuranceLevel.AAL2,
         trusted_issuers=[ISSUER],
         require_single_use=False,
+        allowed_algorithms=["mock-hmac-sha256"],
     )
     cm = ChallengeManager(audience="example.test")
     verifier = BlindAgeVerifier(
@@ -395,3 +402,29 @@ def test_unsupported_key_algorithm_denies_cleanly():
     decision = verifier.verify(present(cm, signed_token()))
     assert decision.decision == Decision.DENY
     assert not decision.signature_valid
+
+
+def test_default_policy_rejects_mock_algorithm():
+    # Same mock registry, but a DEFAULT policy (no explicit allowlist):
+    policy = VerifierPolicy(
+        policy_id="p-default",
+        required_claim=AgeClaim.AGE_OVER_18,
+        minimum_assurance_level=AssuranceLevel.AAL2,
+        trusted_issuers=[ISSUER],
+    )
+    cm = ChallengeManager(audience="example.test")
+    verifier = BlindAgeVerifier(
+        registry=registry(), policy=policy, replay_cache=ReplayCache(":memory:"),
+        challenge_manager=cm, audience="example.test",
+    )
+    decision = verifier.verify(present(cm, signed_token()))
+    assert decision.decision == Decision.DENY
+    assert not decision.signature_valid
+
+
+def test_policy_default_allowlist_contents():
+    policy = VerifierPolicy(
+        policy_id="p", required_claim=AgeClaim.AGE_OVER_18,
+        minimum_assurance_level=AssuranceLevel.AAL2, trusted_issuers=[],
+    )
+    assert policy.allowed_algorithms == ["rsabssa-sha384-pss-deterministic", "ed25519"]
