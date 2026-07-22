@@ -1,0 +1,42 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+env/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Node / TypeScript
+node_modules/
+*.tsbuildinfo
+dist/
+.turbo/
+
+# Env & secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+!**/test_vectors/*.key
+
+# Local state
+*.sqlite
+*.sqlite3
+*.db
+wallet_vault*
+registry.local.*
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
+*.swp
