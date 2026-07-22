@@ -1,4 +1,5 @@
-from datetime import date
+from concurrent.futures import ThreadPoolExecutor
+from datetime import date, timedelta
 
 import pytest
 from fastapi.testclient import TestClient
@@ -106,3 +107,24 @@ def test_well_known_metadata_and_health(client):
     key_ids = {k["key_id"] for k in meta.json()["keys"]}
     assert "dev-AGE_OVER_18-AAL2-2026-Q3" in key_ids
     assert client.get("/health").json() == {"status": "ok"}
+
+
+def test_enrollment_store_thread_safe_under_concurrent_access():
+    store = EnrollmentStore(":memory:")
+    base = date(2000, 1, 1)
+    dobs = [base + timedelta(days=i) for i in range(20)]
+
+    def create_and_fetch(dob: date) -> tuple[str, date]:
+        enrollment_id = store.create(dob)
+        fetched = store.get_dob(enrollment_id)
+        return enrollment_id, fetched
+
+    with ThreadPoolExecutor(max_workers=20) as executor:
+        results = list(executor.map(create_and_fetch, dobs))
+
+    ids = [enrollment_id for enrollment_id, _ in results]
+    assert len(set(ids)) == 20
+
+    for i, (enrollment_id, fetched) in enumerate(results):
+        assert fetched == dobs[i]
+        assert store.get_dob(enrollment_id) == dobs[i]

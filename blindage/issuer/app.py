@@ -42,6 +42,9 @@ def create_app(
         if dob is None:
             raise HTTPException(404, detail="unknown enrollment")
         today = datetime.now(timezone.utc).date()
+        # Phase 1 checks claim eligibility only; assurance_level is user-asserted
+        # because proofing is simulated — real assurance binding arrives with
+        # real proofing (see spec AAL levels).
         if req.claim not in eligible_claims(dob, today):
             # Key-partitioning enforcement point [MOD-1]: never sign under a
             # key whose tuple the enrolled user is not eligible for.
