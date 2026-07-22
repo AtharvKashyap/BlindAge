@@ -43,8 +43,15 @@ wallet/mobile/               # later
 physical_token_demo/         # optional low-assurance demo module (clearly labeled)
 ```
 
-## Deferred follow-ups from Phase 1 reviews
+## Deferred follow-ups from Phase 1–2 reviews
 
+- **Pre-Phase-3 gate: algorithm allowlisting.** The verifier dispatches purely on the
+  registry key's `algorithm`; a mock-algorithm key in a real registry would be forgeable
+  (its published "public key" is the HMAC secret). Add `allowed_algorithms` to
+  `VerifierPolicy` (default ed25519-only) or hard-reject `MOCK_ALGORITHM` outside tests.
+  Pair with the cross-purpose key-collision check (registry vs token_signing material).
+- Consider a domain-separation context prefix in `token_message()` before more key
+  types exist (cheap defense-in-depth; not exploitable today).
 - Decide consciously whether a claim hierarchy (over-21 satisfies over-18) is wanted;
   Phase 1 uses exact-match fail-closed semantics.
 - Verifier decision flags on early deny are cosmetically misleading (`expired`/`revoked`
