@@ -1,14 +1,12 @@
 """Privacy properties are product requirements (spec §15, [MOD-6]).
 
-The xfail(strict=True) tests document Phase 1's KNOWN gap: mock issuance
-sends final token values to the issuer, so issuance and redemption are
-linkable. Phase 3 (RFC 9474 blind signatures) must flip these to passing —
-strict=True means CI breaks loudly the moment they start passing, forcing
-the xfail markers to be removed at exactly the right time.
+Double anonymity is real: issuance uses RFC 9474 RSA blind signatures, so
+the issuer never sees the final token values it is signing, and the
+verifier never sees anything that ties a presentation back to enrollment
+or issuance traffic. Every test in this module is a permanent, CI-blocking
+guarantee.
 """
 import json
-
-import pytest
 
 from blindage.schemas import (
     AgeClaim,
@@ -123,27 +121,25 @@ def test_issuer_metadata_never_contains_private_key_material(issuer_http):
     """Registry/well-known must never leak signing secrets for asymmetric keys.
 
     (Mock-algorithm keys intentionally publish their symmetric secret — the
-    documented Phase 1 artifact — so this asserts on ed25519 keys only.)
+    documented Phase 1 artifact — so this asserts on ed25519/rsabssa keys.)
     """
     meta = issuer_http.get("/.well-known/blindage-issuer.json").json()
+    asymmetric_algorithms = {"ed25519", "rsabssa-sha384-pss-deterministic"}
     for key in meta["keys"]:
-        if key["algorithm"] == "ed25519":
+        if key["algorithm"] in asymmetric_algorithms:
             assert "private" not in json.dumps(key)
-            assert len(key["public_key"]) < 60  # a raw 32-byte public key, not a bundle
-    assert any(k["algorithm"] == "ed25519" for k in meta["keys"]), (
-        "fixture must include an ed25519 key or this test asserts nothing"
+            if key["algorithm"] == "ed25519":
+                assert len(key["public_key"]) < 60  # a raw 32-byte public key, not a bundle
+    assert any(k["algorithm"] in asymmetric_algorithms for k in meta["keys"]), (
+        "fixture must include an ed25519 or rsabssa key or this test asserts nothing"
     )
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="Phase 1 mock issuance sends final token values (nonces) to the "
-    "issuer, so issuance and redemption are linkable. Phase 3 blind "
-    "signatures (RFC 9474) close this gap; this test must then pass.",
-)
 def test_issuer_never_sees_final_token_values(issuer_http, site):
-    """Double-anonymity core property: what the issuer sees during issuance
-    must not contain the token values the verifier later receives."""
+    """Permanent, CI-blocking double-anonymity guarantee: the issuer only
+    ever sees blinded values during issuance. The final token nonce and
+    signature the verifier later receives must never appear anywhere in
+    issuance traffic sent to the issuer."""
     seen_by_issuer: list[str] = []
     original_post = issuer_http.post
 
