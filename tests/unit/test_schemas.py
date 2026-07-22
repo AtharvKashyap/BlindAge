@@ -115,6 +115,21 @@ def test_issuer_key_rejects_purpose_not_in_literal():
         )
 
 
+def test_issuer_key_rejects_empty_string_binding_fields():
+    with pytest.raises(ValidationError):
+        IssuerKey(
+            key_id="k1",
+            purpose="token_signing",
+            algorithm="ed25519",
+            public_key="cGs",
+            claim=AgeClaim.AGE_OVER_18,
+            assurance_level=AssuranceLevel.AAL2,
+            epoch="",
+            valid_from=datetime.now(timezone.utc),
+            valid_until=datetime.now(timezone.utc),
+        )
+
+
 def test_verifier_decision_denies_by_default_shape():
     d = VerifierDecision(
         valid=False,
