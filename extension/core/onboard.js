@@ -36,6 +36,7 @@ export function matchPendingEnroll(pending, senderOrigin, msg, nowMs) {
     return { ok: false, reason: "invalid pending issuer" };
   }
   if (senderOrigin !== expected) return { ok: false, reason: "message origin does not match issuer" };
+  if (!msg || typeof msg !== "object") return { ok: false, reason: "malformed message" };
   if (typeof msg.enrollment_id !== "string" || msg.enrollment_id.length === 0) {
     return { ok: false, reason: "missing enrollment id" };
   }

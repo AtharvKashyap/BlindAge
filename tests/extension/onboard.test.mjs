@@ -44,6 +44,18 @@ test("matchPendingEnroll fails closed", () => {
     matchPendingEnroll(PENDING, "http://localhost:8400", { ...MSG, issuer_id: undefined }, 2000).ok, false);
 });
 
+test("matchPendingEnroll returns ok:false on a null message (no throw)", () => {
+  const v = matchPendingEnroll(PENDING, "http://localhost:8400", null, 2000);
+  assert.equal(v.ok, false);
+});
+
+test("matchPendingEnroll rejects a pending with a malformed issuer URL", () => {
+  const now = 5000;
+  const v = matchPendingEnroll({ issuer: "nope", createdAt: now }, "http://localhost:8400", MSG, now);
+  assert.equal(v.ok, false);
+  assert.equal(v.reason, "invalid pending issuer");
+});
+
 test("pickLatestKey picks the highest epoch among matching rsabssa keys", () => {
   const k = (epoch, over = { claim: DEFAULT_CLAIM, assurance_level: DEFAULT_ASSURANCE, algorithm: RSABSSA, purpose: "token_signing" }) =>
     ({ key_id: "k-" + epoch, epoch, ...over });

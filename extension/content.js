@@ -9,6 +9,12 @@ window.addEventListener("message", (event) => {
       () => void chrome.runtime.lastError // ignore if no receiver
     );
   }
+  if (d.source === "blindage-page" && d.kind === "enrollment" && d.enrollment_id) {
+    chrome.runtime.sendMessage(
+      { type: "enrollment", issuerId: d.issuer_id, enrollmentId: d.enrollment_id, pageOrigin: location.origin },
+      () => void chrome.runtime.lastError // ignore if no receiver
+    );
+  }
 });
 
 chrome.runtime.onMessage.addListener((msg) => {
