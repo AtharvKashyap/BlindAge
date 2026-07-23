@@ -61,10 +61,10 @@ config/dev/                  # generated dev keys/registry — gitignored (Phase
 docs/                        # specs, plans, this roadmap; protocol.md + threat-model.md
                              # + privacy-model.md arrive with Phases 2-3
 wallet/extension/            # Phase 4 (TypeScript + Vite, Manifest V3)
-registry/offchain/           # Phase 5 (registry.json + sig, mirror, validator)
-registry/contracts/          # Phase 6 (IssuerRegistry, RevocationRoots, Transparency)
-transparency/                # Phase 6 (log server + auditor)
-verifier/sdk/node/           # Phase 4-5 (Node verifier SDK)
+registry/offchain/           # registry-sourced trust phase (registry.json + sig, mirror, validator)
+registry/contracts/          # blockchain-registry phase (IssuerRegistry, RevocationRoots, Transparency)
+transparency/                # blockchain-registry phase (log server + auditor)
+verifier/sdk/node/           # registry-sourced trust phase (Node verifier SDK)
 wallet/mobile/               # later
 physical_token_demo/         # optional low-assurance demo module (clearly labeled)
 ```

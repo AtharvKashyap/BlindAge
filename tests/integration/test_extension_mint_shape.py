@@ -1,25 +1,22 @@
 """The contract the in-extension minter depends on: POST blinded_messages to the
-issuer, unblind the response, and the resulting token verifies at a site. The JS
-minter mirrors this Python flow (blind/finalize ported 1:1)."""
+issuer, unblind the response, and the resulting token passes the issuer-key crypto
+verification (RsabssaTokenVerifier). The JS minter mirrors this Python flow
+(blind/finalize ported 1:1)."""
 
 from fastapi.testclient import TestClient
 
 from blindage.crypto import b64u_decode, b64u_encode, blind, finalize
 from blindage.crypto.rsabssa import RsabssaTokenVerifier
-from blindage.example_site.app import create_site
 from blindage.issuer.app import create_app as create_issuer
 from blindage.issuer.keys import IssuerKeyStore
 from blindage.issuer.storage import EnrollmentStore
 from blindage.schemas import token_message
-from tests.conftest import ISSUER_ID, dev_key_entries, dev_registry
+from tests.conftest import dev_key_entries
 
 
 def test_blind_mint_contract_end_to_end():
     key_store = IssuerKeyStore(dev_key_entries())  # rsabssa dev key
     issuer = TestClient(create_issuer(key_store, EnrollmentStore(":memory:")))
-    site = TestClient(
-        create_site(dev_registry(), trusted_issuer=ISSUER_ID, audience="localhost")
-    )
 
     # Enroll and read the issuer public key from well-known (as the extension does).
     eid = issuer.post(
