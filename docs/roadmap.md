@@ -23,9 +23,15 @@ Phases (spec §14, `docs/superpowers/specs/2026-07-21-blindage-design.md`):
 Reprioritized to turn the demo into a self-service, extension-only tool: prove age once,
 then one-click anonymous presentations everywhere.
 
-5. **In-extension blind minting** — port RSABSSA-SHA384-PSS-Deterministic to pure JS
-   (Approach A), gated byte-for-byte by the committed RFC 9474 Appendix A vectors, so the
-   extension mints tokens itself (retires the CLI export/import dependency). *Next slice.*
+5. **In-extension blind minting** — ✅ complete (RSABSSA-SHA384-PSS-Deterministic ported to
+   pure JS [Approach A] in `extension/core/rsabssa.js` + `mint.js`, gated byte-for-byte by
+   the committed RFC 9474 Appendix A vectors; a service-worker "mint" handler and a popup
+   "Get tokens" card let the extension mint its own tokens — the extension does no key
+   generation and no signing, only blind/unblind/verify, and POSTs only blinded messages.
+   CLI `export`/import still works but is now optional. The Python-side issuer contract is
+   pinned by `tests/integration/test_extension_mint_shape.py`. The JS RSABSSA is
+   vector-gated but JS BigInt is not constant-time, so the WASM-of-audited-lib production
+   gate is deferred — not for deployment).
 6. **Self-service onboarding** — extension "Get tokens" flow: choose issuer → enroll →
    mint batch → store, in-browser.
 7. **Real identity-proofing adapter** — OIDC/mDL age check on the issuer replacing
@@ -76,5 +82,6 @@ physical_token_demo/         # optional low-assurance demo module (clearly label
 - Multi-process deployments need a shared challenge store + shared replay cache (Phase 1
   ChallengeManager is in-memory, single-process).
 - Cleanups: vault cleanup-branch test, PII test value-level (not just key-name) checks.
-- Extension: in-browser blind minting (WASM of a reviewed RFC 9474 impl) and
-  TypeScript+Vite migration.
+- Extension: in-browser blind minting now exists in pure JS (Phase 5, vector-gated); the
+  remaining deferred swap is the WASM build of a reviewed/audited RFC 9474 impl (JS BigInt
+  is not constant-time — production gate). TypeScript+Vite migration also still deferred.
