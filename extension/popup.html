@@ -20,11 +20,16 @@ small{color:#4a5568}
 <textarea id="importText" placeholder='{"version":"1.0","tokens":[...]}'></textarea>
 <button id="importBtn">Import pasted text</button><div id="importMsg"></div></div>
 <div class="card"><strong>Get tokens</strong>
-<p><small>Mint anonymous tokens directly from an issuer (no CLI needed).</small></p>
+<p><small>Enroll with an issuer once, then mint anonymous tokens — no CLI needed.</small></p>
+<p><select id="issuerSelect" style="width:100%"></select></p>
 <p><input id="mIssuer" value="http://localhost:8400" style="width:100%"></p>
-<p><input id="mEnroll" placeholder="enrollment id" style="width:100%"></p>
-<p><input id="mClaim" value="AGE_OVER_18" style="width:60%">
-   <input id="mCount" type="number" value="5" min="1" max="100" style="width:30%"></p>
-<button id="mintBtn">Get tokens</button><div id="mintMsg"></div></div>
+<button id="enrollBtn">Enroll &amp; get tokens</button>
+<div id="onboardMsg"></div>
+<div id="topup" hidden>
+  <p><input id="mClaim" value="AGE_OVER_18" style="width:60%">
+     <input id="mCount" type="number" value="5" min="1" max="100" style="width:30%"></p>
+  <button id="mintBtn">Top up</button><div id="mintMsg"></div>
+</div>
+</div>
 <script src="popup.js" type="module"></script>
 </body></html>

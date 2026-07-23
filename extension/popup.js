@@ -21,7 +21,7 @@ async function renderInventory() {
   el.textContent = "";
   if (!entries.length) {
     const small = document.createElement("small");
-    small.textContent = "none — import some below";
+    small.textContent = "none — get tokens below";
     el.appendChild(small);
     return;
   }
@@ -87,21 +87,67 @@ document.getElementById("importFile").addEventListener("change", (e) => {
   reader.readAsText(file);
 });
 
+function syncIssuerControls(issuers) {
+  const sel = document.getElementById("issuerSelect");
+  const enrolled = issuers.find((r) => r.baseUrl === sel.value);
+  if (enrolled) document.getElementById("mIssuer").value = enrolled.baseUrl;
+  document.getElementById("topup").hidden = !enrolled;
+}
+
+async function renderIssuers() {
+  const { issuers } = await send({ type: "list_issuers" });
+  const sel = document.getElementById("issuerSelect");
+  sel.textContent = "";
+  const optNew = document.createElement("option");
+  optNew.value = "";
+  optNew.textContent = "New issuer…";
+  sel.appendChild(optNew);
+  for (const rec of issuers || []) {
+    const o = document.createElement("option");
+    o.value = rec.baseUrl;
+    o.textContent = rec.baseUrl;
+    sel.appendChild(o);
+  }
+  if ((issuers || []).length) sel.value = issuers[issuers.length - 1].baseUrl;
+  sel.addEventListener("change", () => syncIssuerControls(issuers || []));
+  syncIssuerControls(issuers || []);
+}
+
+async function renderOnboardStatus() {
+  const { lastOnboard } = await send({ type: "get_onboard_status" });
+  if (!lastOnboard) return;
+  const el = document.getElementById("onboardMsg");
+  const m = lastOnboard.mint;
+  el.textContent = m && m.ok
+    ? `Enrolled — ${m.added} tokens ready.`
+    : `Enrolled, but minting failed: ${(m && m.reason) || "unknown"} — use Top up.`;
+}
+
+document.getElementById("enrollBtn").addEventListener("click", async () => {
+  const el = document.getElementById("onboardMsg");
+  el.textContent = "Checking issuer…";
+  const r = await send({ type: "start_enroll", issuer: document.getElementById("mIssuer").value.trim() });
+  el.textContent = r.ok
+    ? "Complete enrollment in the issuer tab, then reopen this popup."
+    : "Failed: " + r.reason;
+});
+
 document.getElementById("mintBtn").addEventListener("click", async () => {
   const el = document.getElementById("mintMsg");
+  const { issuers } = await send({ type: "list_issuers" });
+  const rec = (issuers || []).find((r) => r.baseUrl === document.getElementById("issuerSelect").value);
+  if (!rec) { el.textContent = "Select an enrolled issuer first."; return; }
   el.textContent = "Minting…";
   const r = await send({
-    type: "mint",
-    issuer: document.getElementById("mIssuer").value.trim(),
-    enrollmentId: document.getElementById("mEnroll").value.trim(),
-    claim: document.getElementById("mClaim").value.trim(),
-    assuranceLevel: "AAL2",
-    epoch: document.getElementById("mCount").dataset.epoch || "2026-Q3",
-    count: Number(document.getElementById("mCount").value) || 1,
+    type: "mint", issuer: rec.baseUrl, enrollmentId: rec.enrollmentId,
+    claim: document.getElementById("mClaim").value.trim(), assuranceLevel: "AAL2",
+    count: Math.min(Math.max(Number(document.getElementById("mCount").value) || 1, 1), 100),
   });
   el.textContent = r.ok ? `Minted. ${r.added} new, ${r.total} total.` : "Failed: " + r.reason;
   if (r.ok) renderInventory();
 });
 
+renderIssuers();
+renderOnboardStatus();
 renderInventory();
 renderPending();
