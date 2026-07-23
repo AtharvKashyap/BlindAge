@@ -2,6 +2,8 @@
 // under Node). This file only bridges chrome.storage + chrome.runtime messaging.
 import { validateChallenge, consentSummary } from "./core/protocol.js";
 import { mergeTokens, approveRequest } from "./core/store.js";
+import { RSABSSA_ALGORITHM, importRsaPublicKey } from "./core/rsabssa.js";
+import { findTokenKey, prepareBlindBatch, assembleTokens } from "./core/mint.js";
 
 const pending = {}; // tabId -> { challenge, pageHost }
 
@@ -19,6 +21,38 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       const { tokens, added, rejected } = mergeTokens(await getTokens(), msg.tokens);
       await setTokens(tokens);
       sendResponse({ count: tokens.length, added, rejected });
+    } else if (msg.type === "mint") {
+      try {
+        const wk = await (await fetch(`${msg.issuer}/.well-known/blindage-issuer.json`)).json();
+        const key = findTokenKey(wk, msg.claim, msg.assuranceLevel, msg.epoch);
+        if (!key) { sendResponse({ ok: false, reason: "issuer advertises no matching key" }); return; }
+        if (key.algorithm !== RSABSSA_ALGORITHM) {
+          sendResponse({ ok: false, reason: `unsupported key algorithm ${key.algorithm}` }); return;
+        }
+        const pub = await importRsaPublicKey(key.public_key);
+        const { nonces, invs, blindedB64u } = await prepareBlindBatch(pub, msg.count);
+        const issueResp = await fetch(`${msg.issuer}/v1/tokens/issue`, {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            version: "1.0", enrollment_id: msg.enrollmentId, claim: msg.claim,
+            assurance_level: msg.assuranceLevel, epoch: msg.epoch, blinded_messages: blindedB64u,
+          }),
+        });
+        if (!issueResp.ok) {
+          sendResponse({ ok: false, reason: `issuer returned ${issueResp.status}` }); return;
+        }
+        const body = await issueResp.json();
+        const tokens = await assembleTokens({
+          pub, nonces, invs, signaturesB64u: body.signatures, claim: msg.claim,
+          assuranceLevel: msg.assuranceLevel, epoch: msg.epoch,
+          issuerId: wk.issuer_id, keyId: key.key_id,
+        });
+        const merged = mergeTokens(await getTokens(), tokens);
+        await setTokens(merged.tokens);
+        sendResponse({ ok: true, added: merged.added, total: merged.tokens.length });
+      } catch (e) {
+        sendResponse({ ok: false, reason: String((e && e.message) || e) });
+      }
     } else if (msg.type === "list_tokens") {
       sendResponse({ tokens: await getTokens() });
     } else if (msg.type === "page_request") {

@@ -87,5 +87,21 @@ document.getElementById("importFile").addEventListener("change", (e) => {
   reader.readAsText(file);
 });
 
+document.getElementById("mintBtn").addEventListener("click", async () => {
+  const el = document.getElementById("mintMsg");
+  el.textContent = "Minting…";
+  const r = await send({
+    type: "mint",
+    issuer: document.getElementById("mIssuer").value.trim(),
+    enrollmentId: document.getElementById("mEnroll").value.trim(),
+    claim: document.getElementById("mClaim").value.trim(),
+    assuranceLevel: "AAL2",
+    epoch: document.getElementById("mCount").dataset.epoch || "2026-Q3",
+    count: Number(document.getElementById("mCount").value) || 1,
+  });
+  el.textContent = r.ok ? `Minted. ${r.added} new, ${r.total} total.` : "Failed: " + r.reason;
+  if (r.ok) renderInventory();
+});
+
 renderInventory();
 renderPending();
