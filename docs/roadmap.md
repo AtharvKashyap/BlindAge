@@ -32,8 +32,13 @@ then one-click anonymous presentations everywhere.
    pinned by `tests/integration/test_extension_mint_shape.py`. The JS RSABSSA is
    vector-gated but JS BigInt is not constant-time, so the WASM-of-audited-lib production
    gate is deferred — not for deployment).
-6. **Self-service onboarding** — extension "Get tokens" flow: choose issuer → enroll →
-   mint batch → store, in-browser.
+6. **Self-service onboarding** — ✅ complete (extension "Get tokens" flow: choose issuer →
+   enroll on the issuer's TEST-ONLY `/enroll` page → auto-mint a starter batch → store,
+   all in-browser; a content-script bridge carries only the opaque enrollment id, the
+   service worker validates it fail-closed [origin-checked, 10-min TTL, storage-persisted]
+   and remembers enrolled issuers for no-re-proof top-up. Identity never enters the
+   extension; minting still POSTs only blinded messages. The DOB form is a placeholder for
+   Phase 7's real identity check).
 7. **Real identity-proofing adapter** — OIDC/mDL age check on the issuer replacing
    `--test-dob`; enrollment persistence so top-up needs no re-proof.
 8. **Registry-sourced issuer trust + inventory/auto-top-up** — the extension lists only
