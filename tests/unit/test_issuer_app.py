@@ -270,3 +270,23 @@ def test_well_known_includes_rsabssa_public_key(blind_client):
     assert key["algorithm"] == "rsabssa-sha384-pss-deterministic"
     assert key["public_key"] == RSA_PUB
     assert RSA_PRIV not in json.dumps(meta)
+
+
+def test_enroll_page_is_served_with_test_only_framing(client):
+    resp = client.get("/enroll")
+    assert resp.status_code == 200
+    assert resp.headers["content-type"].startswith("text/html")
+    body = resp.text
+    assert "TEST-ONLY" in body                      # honest framing (constitution rule 9)
+    assert "Phase 7" in body                        # says real identity check replaces it
+    assert "/v1/enrollment" in body                 # posts to its own origin
+    assert '"did:web:issuer.test"' in body          # issuer_id embedded as JSON
+    assert "blindage-page" in body and "enrollment" in body  # postMessage handoff
+
+
+def test_enroll_page_echoes_no_enrollment_data(client):
+    # The page is a static form: no enrollment ids or DOBs are rendered server-side.
+    created = client.post("/v1/enrollment", json={"date_of_birth": "2000-01-01"}).json()
+    body = client.get("/enroll").text
+    assert created["enrollment_id"] not in body
+    assert "2000-01-01" not in body

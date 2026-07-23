@@ -1,6 +1,8 @@
+import json
 from datetime import date, datetime, timezone
 
 from fastapi import FastAPI, HTTPException
+from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, ConfigDict
 
 from blindage.crypto import RSABSSA_ALGORITHM, BlindSignatureError, b64u_decode, b64u_encode, blind_sign
@@ -10,6 +12,35 @@ from blindage.issuer.storage import EnrollmentStore
 from blindage.schemas import TokenIssueRequest, TokenIssueResponse, token_message
 
 MAX_BATCH = 100
+
+ENROLL_PAGE = """<!doctype html>
+<html><head><meta charset="utf-8"><title>BlindAge Dev Issuer — Enroll</title>
+<style>body{font-family:system-ui;max-width:30rem;margin:3rem auto;padding:0 1rem}
+.warn{background:#fffaf0;border:1px solid #dd6b20;border-radius:.4rem;padding:.6rem}
+button{padding:.5rem .8rem;border:0;border-radius:.3rem;background:#2b6cb0;color:#fff}</style>
+</head><body>
+<h1>Enroll with BlindAge Dev Issuer</h1>
+<p class="warn"><strong>TEST-ONLY:</strong> this form asserts a date of birth without
+verifying it. Phase 7 replaces it with a real identity check (bank / eID / mDL).</p>
+<form id="f"><label>Date of birth <input type="date" id="dob" required></label>
+<button type="submit">Enroll</button></form>
+<p id="msg"></p>
+<script>
+const ISSUER_ID = __ISSUER_ID__;
+document.getElementById("f").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const msg = document.getElementById("msg");
+  const resp = await fetch("/v1/enrollment", {
+    method: "POST", headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({date_of_birth: document.getElementById("dob").value}),
+  });
+  if (!resp.ok) { msg.textContent = "Enrollment failed (" + resp.status + ")."; return; }
+  const body = await resp.json();
+  window.postMessage({source: "blindage-page", kind: "enrollment",
+    issuer_id: ISSUER_ID, enrollment_id: body.enrollment_id}, location.origin);
+  msg.textContent = "You're enrolled — return to the extension.";
+});
+</script></body></html>"""
 
 
 class EnrollmentRequest(BaseModel):
@@ -113,6 +144,12 @@ def create_app(
             "valid_from": "2026-01-01T00:00:00Z",
             "valid_until": "2027-01-01T00:00:00Z",
         }
+
+    @app.get("/enroll", response_class=HTMLResponse)
+    def enroll_page() -> str:
+        # Identity (the DOB) flows only page -> issuer on this origin; the page
+        # hands the extension nothing but the opaque enrollment_id.
+        return ENROLL_PAGE.replace("__ISSUER_ID__", json.dumps(issuer_id))
 
     @app.get("/health")
     def health() -> dict:
