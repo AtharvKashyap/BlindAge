@@ -24,12 +24,16 @@ class EnrollmentStore:
             # existing rows get a fresh year-long expiry.
             cols = [r[1] for r in self._conn.execute("PRAGMA table_info(enrollments)")]
             if "expires_at" not in cols:
+                # Fold the computed default into the ALTER so the migration is a
+                # single atomic statement. Under sqlite3 legacy autocommit, a
+                # separate ALTER + UPDATE could leave '' values if a crash lands
+                # between them (column now exists → this branch never repairs it).
+                # `default` is a generated ISO timestamp, not user input, and
+                # ALTER cannot bind ? params for DEFAULT — so interpolation is safe.
                 default = (datetime.now(timezone.utc) + timedelta(days=365)).isoformat()
                 self._conn.execute(
-                    "ALTER TABLE enrollments ADD COLUMN expires_at TEXT NOT NULL DEFAULT ''"
-                )
-                self._conn.execute(
-                    "UPDATE enrollments SET expires_at = ? WHERE expires_at = ''", (default,)
+                    "ALTER TABLE enrollments ADD COLUMN expires_at TEXT NOT NULL"
+                    f" DEFAULT '{default}'"
                 )
             self._conn.commit()
 
