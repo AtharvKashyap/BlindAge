@@ -1,6 +1,6 @@
 import json
 from concurrent.futures import ThreadPoolExecutor
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone
 
 import pytest
 from fastapi.testclient import TestClient
@@ -125,9 +125,11 @@ def test_enrollment_store_thread_safe_under_concurrent_access():
     base = date(2000, 1, 1)
     dobs = [base + timedelta(days=i) for i in range(20)]
 
+    expires_at = datetime.now(timezone.utc) + timedelta(days=365)
+
     def create_and_fetch(dob: date) -> tuple[str, date]:
-        enrollment_id = store.create(dob)
-        fetched = store.get_dob(enrollment_id)
+        enrollment_id = store.create(dob, expires_at)
+        fetched = store.get(enrollment_id)[0]
         return enrollment_id, fetched
 
     with ThreadPoolExecutor(max_workers=20) as executor:
@@ -138,7 +140,7 @@ def test_enrollment_store_thread_safe_under_concurrent_access():
 
     for i, (enrollment_id, fetched) in enumerate(results):
         assert fetched == dobs[i]
-        assert store.get_dob(enrollment_id) == dobs[i]
+        assert store.get(enrollment_id)[0] == dobs[i]
 
 
 ED_PRIV, ED_PUB = generate_token_keypair()

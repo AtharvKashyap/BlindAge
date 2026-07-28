@@ -1,5 +1,5 @@
 import json
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import HTMLResponse
@@ -12,6 +12,7 @@ from blindage.issuer.storage import EnrollmentStore
 from blindage.schemas import TokenIssueRequest, TokenIssueResponse, token_message
 
 MAX_BATCH = 100
+ENROLLMENT_TTL_DAYS = 365
 
 ENROLL_PAGE = """<!doctype html>
 <html><head><meta charset="utf-8"><title>BlindAge Dev Issuer — Enroll</title>
@@ -58,8 +59,11 @@ def create_app(
     @app.post("/v1/enrollment", status_code=201)
     def enroll(req: EnrollmentRequest) -> dict:
         # Phase 1 test-only proofing: the DOB is asserted, not verified.
-        enrollment_id = enrollment_store.create(req.date_of_birth)
-        claims = eligible_claims(req.date_of_birth, datetime.now(timezone.utc).date())
+        now = datetime.now(timezone.utc)
+        enrollment_id = enrollment_store.create(
+            req.date_of_birth, now + timedelta(days=ENROLLMENT_TTL_DAYS)
+        )
+        claims = eligible_claims(req.date_of_birth, now.date())
         return {
             "enrollment_id": enrollment_id,
             "eligible_claims": sorted(c.value for c in claims),
@@ -67,10 +71,15 @@ def create_app(
 
     @app.post("/v1/tokens/issue")
     def issue(req: TokenIssueRequest) -> TokenIssueResponse:
-        dob = enrollment_store.get_dob(req.enrollment_id)
-        if dob is None:
+        row = enrollment_store.get(req.enrollment_id)
+        if row is None:
             raise HTTPException(404, detail="unknown enrollment")
-        today = datetime.now(timezone.utc).date()
+        dob, expires_at = row
+        now = datetime.now(timezone.utc)
+        if now >= expires_at:
+            # Top-up without re-proof holds only until enrollment expiry.
+            raise HTTPException(403, detail="enrollment expired")
+        today = now.date()
         # Phase 1 checks claim eligibility only; assurance_level is user-asserted
         # because proofing is simulated — real assurance binding arrives with
         # real proofing (see spec AAL levels).
