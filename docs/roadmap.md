@@ -99,5 +99,6 @@ physical_token_demo/         # optional low-assurance demo module (clearly label
   remaining deferred swap is the WASM build of a reviewed/audited RFC 9474 impl (JS BigInt
   is not constant-time — production gate). TypeScript+Vite migration also still deferred.
 - OIDC proofing (Phase 7) hardening before production: JWKS is cached per-process (needs
-  refetch-on-`kid`-miss to survive IdP key rotation), and multi-audience ID tokens are not
-  `azp`-checked.
+  refetch-on-`kid`-miss to survive IdP key rotation), multi-audience ID tokens are not
+  `azp`-checked, and abandoned proofing sessions are never purged from the in-memory
+  `ProofingSessionStore` (needs a sweep-on-create or size cap).
