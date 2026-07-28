@@ -2,12 +2,13 @@ import json
 from datetime import date, datetime, timedelta, timezone
 
 from fastapi import FastAPI, HTTPException
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 from pydantic import BaseModel, ConfigDict
 
 from blindage.crypto import RSABSSA_ALGORITHM, BlindSignatureError, b64u_decode, b64u_encode, blind_sign
 from blindage.issuer.eligibility import eligible_claims
 from blindage.issuer.keys import IssuerKeyStore, public_material
+from blindage.issuer.proofing import OidcProofing, ProofingError, TestDobProofing
 from blindage.issuer.storage import EnrollmentStore
 from blindage.schemas import TokenIssueRequest, TokenIssueResponse, token_message
 
@@ -44,6 +45,18 @@ document.getElementById("f").addEventListener("submit", async (e) => {
 </script></body></html>"""
 
 
+ENROLLED_PAGE = """<!doctype html>
+<html><head><meta charset="utf-8"><title>BlindAge — Enrolled</title>
+<style>body{font-family:system-ui;max-width:30rem;margin:3rem auto;padding:0 1rem}</style>
+</head><body>
+<h1>You're enrolled</h1>
+<p>Return to the extension — your tokens are being minted.</p>
+<script>
+window.postMessage({source: "blindage-page", kind: "enrollment",
+  issuer_id: __ISSUER_ID__, enrollment_id: __ENROLLMENT_ID__}, location.origin);
+</script></body></html>"""
+
+
 class EnrollmentRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     date_of_birth: date
@@ -53,11 +66,17 @@ def create_app(
     key_store: IssuerKeyStore,
     enrollment_store: EnrollmentStore,
     issuer_id: str = "did:web:issuer.test",
+    proofing=None,
 ) -> FastAPI:
+    proofing = proofing if proofing is not None else TestDobProofing()
+    oidc_mode = isinstance(proofing, OidcProofing)
     app = FastAPI(title="BlindAge Issuer (Phase 3, blind issuance)")
 
     @app.post("/v1/enrollment", status_code=201)
     def enroll(req: EnrollmentRequest) -> dict:
+        if oidc_mode:
+            # Asserted DOB would bypass identity proofing — fail closed.
+            raise HTTPException(403, detail="asserted enrollment disabled; use /enroll")
         # Phase 1 test-only proofing: the DOB is asserted, not verified.
         now = datetime.now(timezone.utc)
         enrollment_id = enrollment_store.create(
@@ -154,11 +173,33 @@ def create_app(
             "valid_until": "2027-01-01T00:00:00Z",
         }
 
-    @app.get("/enroll", response_class=HTMLResponse)
-    def enroll_page() -> str:
+    @app.get("/enroll")
+    def enroll_page():
+        if oidc_mode:
+            return RedirectResponse(proofing.authorize_redirect_url(), status_code=302)
+        # TEST-ONLY asserted-DOB form (Phase 6) — selected only by config.
         # Identity (the DOB) flows only page -> issuer on this origin; the page
         # hands the extension nothing but the opaque enrollment_id.
-        return ENROLL_PAGE.replace("__ISSUER_ID__", json.dumps(issuer_id))
+        return HTMLResponse(ENROLL_PAGE.replace("__ISSUER_ID__", json.dumps(issuer_id)))
+
+    @app.get("/oidc/callback", response_class=HTMLResponse)
+    def oidc_callback(code: str, state: str) -> str:
+        if not oidc_mode:
+            raise HTTPException(404, detail="OIDC proofing not enabled")
+        try:
+            dob = proofing.handle_callback(code, state)
+        except ProofingError as exc:
+            # Fail closed: no enrollment on any proofing defect.
+            raise HTTPException(400, detail=str(exc))
+        now = datetime.now(timezone.utc)
+        enrollment_id = enrollment_store.create(
+            dob, now + timedelta(days=ENROLLMENT_TTL_DAYS)
+        )
+        # The ID token (and its sub/identity claims) is dropped here: only the
+        # verified DOB and expiry are stored.
+        return ENROLLED_PAGE.replace("__ISSUER_ID__", json.dumps(issuer_id)).replace(
+            "__ENROLLMENT_ID__", json.dumps(enrollment_id)
+        )
 
     @app.get("/health")
     def health() -> dict:
