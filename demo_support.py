@@ -1,5 +1,6 @@
 # demo_support.py  (repo root — dev/demo only)
 """Uvicorn factories for the demo script. Not part of the package."""
+import os
 import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[0]))  # robust against editable-install .pth quirks
@@ -14,7 +15,24 @@ DEV = Path("config/dev")
 
 
 def issuer_app():
-    return create_app(IssuerKeyStore.from_file(DEV / "issuer_keys.json"), EnrollmentStore("config/dev/issuer.sqlite"))
+    key_store = IssuerKeyStore.from_file(DEV / "issuer_keys.json")
+    store = EnrollmentStore("config/dev/issuer.sqlite")
+    if os.environ.get("BLINDAGE_PROOFING") == "oidc":
+        import httpx
+        from blindage.issuer.proofing import OidcConfig, OidcProofing
+        cfg = OidcConfig(
+            idp_base_url="http://localhost:8600",
+            client_id="blindage-issuer",
+            client_secret="dev-secret",
+            redirect_uri="http://localhost:8400/oidc/callback",
+        )
+        return create_app(key_store, store, proofing=OidcProofing(cfg, httpx.Client()))
+    return create_app(key_store, store)
+
+
+def idp_app():
+    from blindage.dev_idp.app import create_idp
+    return create_idp()
 
 
 def site_app():
