@@ -7,22 +7,25 @@ once and issues unlinkable, single-use anonymous age tokens. Websites learn
 only whether the user satisfies a threshold (e.g. `AGE_OVER_18`) — never
 identity. The issuer never learns where tokens are used.
 
-> **Status: Phase 6 (self-service onboarding).** The wallet blinds token
+> **Status: Phase 7 (real identity-proofing adapter).** The wallet blinds token
 > messages (RFC 9474 RSABSSA); the issuer signs values it cannot read;
 > websites verify standard RSA-PSS signatures. The issuer can no longer link
 > issuance to redemption — the property this project exists for. Conformance
-> is proven against RFC 9474 official test vectors. The browser extension now
+> is proven against RFC 9474 official test vectors. The browser extension
 > onboards a user end-to-end: pick an issuer, enroll on the issuer's own page,
 > and the extension auto-mints a batch of anonymous tokens in-browser via a
 > pure-JS RFC 9474 port (blind/unblind/verify only; it POSTs only blinded
 > messages, preserving double anonymity). Identity never enters the extension —
-> the enrollment page hands back only an opaque enrollment id. The Python CLI
-> still mints and export/import still works, now optional. Still not
-> production-ready: neither Python's big-int math nor JS BigInt is constant-time
-> (see docs/decisions.md) — the production gate is a WASM build of an audited
-> implementation — and the enrollment DOB form is a **TEST-ONLY placeholder**
-> that asserts an age with no real proofing (Phase 7 replaces it with a real
-> OIDC/mDL identity check). Do not deploy.
+> the enrollment page hands back only an opaque enrollment id. Enrollment now
+> runs a pluggable proofing adapter: the default `TestDobProofing` (age asserted
+> via a DOB form, TEST-ONLY) or `OidcProofing`, a real OIDC Authorization Code +
+> PKCE flow with fail-closed RS256-only ID-token validation, and enrollments
+> expire after 365 days. The Python CLI still mints and export/import still
+> works, now optional. Still not production-ready: neither Python's big-int math
+> nor JS BigInt is constant-time (see docs/decisions.md) — the production gate is
+> a WASM build of an audited implementation — and the bundled dev IdP is
+> **SIMULATED / TEST-ONLY** (it verifies nothing); real proofing means pointing
+> `OidcConfig` at a real IdP. Do not deploy.
 >
 > BlindAge provides privacy-preserving age *assurance*, not perfect age
 > *enforcement* — it cannot fully prevent voluntary token sharing. The honest
@@ -38,7 +41,7 @@ python3 -m venv .venv
 ./scripts/run_protocol_demo.sh         # end-to-end demo: enroll → mint → prove → redeem → replay-reject
 ```
 
-## Browser extension (Phase 4–6)
+## Browser extension (Phase 4–7)
 
 A Chrome extension (Manifest V3, vanilla JS, no build step). It detects a site's
 age gate, shows a consent prompt, presents one stored anonymous token, and marks
@@ -47,24 +50,43 @@ it spent.
 Since Phase 6 the extension onboards a user **self-service, no CLI needed**. In
 the popup's "Get tokens" card, enter the issuer URL (default
 `http://localhost:8400`) and click "Enroll & get tokens". The extension opens the
-issuer's own `/enroll` page; you fill in a date of birth there and, on success,
-the page hands the extension nothing but an opaque enrollment id. The extension
-then auto-mints a batch of `AGE_OVER_18` tokens (epoch auto-selected from the
-issuer's newest matching well-known key) and remembers the issuer, so later
-top-ups need no re-enrollment. Minting uses a pure-JS port of RFC 9474 RSABSSA:
+issuer's own `/enroll` page. What happens there depends on the issuer's proofing
+mode: in test mode (`TestDobProofing`, the default) you fill in a date of birth;
+in OIDC mode (`OidcProofing`) the issuer redirects you to an OpenID Connect
+identity provider, you authenticate (Authorization Code + PKCE), and the issuer
+validates the returned ID token (RS256 only, fail-closed) to read your birthdate.
+Either way, on success the page hands the extension nothing but an opaque
+enrollment id. The extension then auto-mints a batch of `AGE_OVER_18` tokens
+(epoch auto-selected from the issuer's newest matching well-known key) and
+remembers the issuer, so later top-ups need no re-enrollment (until the
+enrollment expires — 365 days). Minting uses a pure-JS port of RFC 9474 RSABSSA:
 the extension only blinds/unblinds/verifies (it never generates keys or signs)
 and POSTs only blinded messages, so the issuer still cannot link issuance to
-redemption. Identity (the DOB) flows only from the enrollment page to the issuer
-on the issuer's own origin — it never enters the extension.
+redemption. Identity (the DOB / OIDC claims) flows only to the issuer on the
+issuer's own origin — it never enters the extension.
 
-> **The enrollment DOB form is a TEST-ONLY placeholder.** It asserts a date of
-> birth with no real identity proofing; Phase 7 replaces it with a real OIDC/mDL
-> age check on the issuer. **Not for deployment:** JS BigInt is not
-> constant-time, so the production gate is a WASM build of an audited
-> implementation (see docs/decisions.md); the port is vector-gated against RFC
-> 9474 Appendix A only.
+> **The bundled dev IdP is SIMULATED / TEST-ONLY.** It verifies no real identity
+> documents — it just lets you pick a persona (or type any DOB) and mints a
+> matching ID token with a fresh random `sub` per authorization. Real production
+> proofing means pointing `OidcConfig` at a real IdP — that is configuration, not
+> a code change. The `TestDobProofing` DOB form likewise asserts an age with no
+> proofing. **Not for deployment:** JS BigInt is not constant-time, so the
+> production gate is a WASM build of an audited implementation (see
+> docs/decisions.md); the port is vector-gated against RFC 9474 Appendix A only.
 
-To run the demo issuer and a protected site locally:
+The one-command browser demo runs the issuer in OIDC mode against the simulated
+dev IdP, plus the example site:
+
+```bash
+./scripts/run_browser_demo.sh   # dev IdP :8600 + issuer (OIDC) :8400 + site :8500
+```
+
+Then load `extension/` unpacked (chrome://extensions → Developer mode → Load
+unpacked). In the popup, click "Enroll & get tokens"; the issuer redirects you to
+the simulated dev IdP, where you pick a persona; your inventory then fills. Open
+`http://localhost:8500/protected`, click the BlindAge icon, and "Allow once".
+
+To run a plain test-mode issuer (DOB form, no IdP) and a protected site instead:
 
 ```bash
 .venv/bin/python scripts/generate_test_issuer.py
@@ -73,13 +95,11 @@ export BLINDAGE_WALLET_PASSPHRASE=demo
 .venv/bin/python -m uvicorn --port 8500 --factory demo_support:site_app &
 ```
 
-Then load `extension/` unpacked (chrome://extensions → Developer mode → Load
-unpacked). In the popup, click "Enroll & get tokens", complete the issuer's
-enroll page, and your inventory fills. Open `http://localhost:8500/protected`,
-click the BlindAge icon, and "Allow once".
-
 The Python CLI wallet still mints, and `blindage export`/import into the popup's
-Import box still works — now **optional** (mainly for testing):
+Import box still works — now **optional** (mainly for testing). The CLI
+`--test-dob` path (and the Phase 6 DOB form) work only against **test-mode**
+issuers (`TestDobProofing`); an OIDC-mode issuer rejects asserted enrollment
+(`POST /v1/enrollment`) with 403 and requires the browser `/enroll` flow:
 
 ```bash
 .venv/bin/python -m blindage.wallet.cli enroll --issuer http://localhost:8400 --test-dob 2000-01-01 --vault /tmp/w.blindage
@@ -92,6 +112,16 @@ Import box still works — now **optional** (mainly for testing):
 - `docs/superpowers/specs/2026-07-21-blindage-design.md` — authoritative design spec
 - `CLAUDE.md` — project constitution (non-negotiable privacy/crypto rules)
 - `docs/superpowers/plans/2026-07-21-phase1-foundation.md` — Phase 1 plan
+
+## Known limitations (pre-deployment)
+
+Beyond the not-for-deployment crypto gates above, the OIDC proofing adapter has
+two hardening items deferred before production:
+
+- **JWKS is cached per-process.** The issuer fetches the IdP's signing keys once
+  and reuses them; IdP key rotation needs refetch-on-`kid`-miss before production.
+- **Multi-audience ID tokens are not `azp`-checked.** Tokens whose `aud` is an
+  array are accepted without verifying the authorized party (`azp`) claim.
 
 ## Troubleshooting
 

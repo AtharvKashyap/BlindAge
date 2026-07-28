@@ -39,8 +39,16 @@ then one-click anonymous presentations everywhere.
    and remembers enrolled issuers for no-re-proof top-up. Identity never enters the
    extension; minting still POSTs only blinded messages. The DOB form is a placeholder for
    Phase 7's real identity check).
-7. **Real identity-proofing adapter** — OIDC/mDL age check on the issuer replacing
-   `--test-dob`; enrollment persistence so top-up needs no re-proof.
+7. **Real identity-proofing adapter** — ✅ complete (pluggable proofing on the issuer:
+   `TestDobProofing` [default, DOB asserted, TEST-ONLY] or `OidcProofing`, a real OIDC
+   Authorization Code + PKCE flow with fail-closed RS256-only ID-token validation [PyJWT];
+   a bundled SIMULATED dev IdP [`blindage/dev_idp`, port 8600, persona login, random `sub`
+   per authorization] drives the demo — it verifies nothing, so real proofing means
+   pointing `OidcConfig` at a real IdP [config, not code]. Enrollment persists and expires
+   after 365 days, enforced at issue [403 "enrollment expired"]; asserted enrollment is
+   disabled in OIDC mode [403]; a CI-blocking privacy test pins the enrollment DB to exactly
+   (enrollment_id, date_of_birth, expires_at). Demo: `BLINDAGE_PROOFING=oidc` +
+   `scripts/run_browser_demo.sh`. Zero extension changes — the bridge contract is unchanged).
 8. **Registry-sourced issuer trust + inventory/auto-top-up** — the extension lists only
    registry-approved issuers (absorbs the former "signed registry distribution": download,
    root-signature verification, caching, rollback detection, revocation) and auto-mints
@@ -90,3 +98,6 @@ physical_token_demo/         # optional low-assurance demo module (clearly label
 - Extension: in-browser blind minting now exists in pure JS (Phase 5, vector-gated); the
   remaining deferred swap is the WASM build of a reviewed/audited RFC 9474 impl (JS BigInt
   is not constant-time — production gate). TypeScript+Vite migration also still deferred.
+- OIDC proofing (Phase 7) hardening before production: JWKS is cached per-process (needs
+  refetch-on-`kid`-miss to survive IdP key rotation), and multi-audience ID tokens are not
+  `azp`-checked.
