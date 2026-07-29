@@ -66,6 +66,19 @@ test("approvedIssuers filters status and validity window", () => {
   ] };
   assert.deepEqual(approvedIssuers(reg, NOW).map((i) => i.issuer_id), ["did:web:issuer.test"]);
   assert.deepEqual(approvedIssuers(undefined, NOW), []);
+  assert.deepEqual(approvedIssuers(reg, "garbage"), []); // fail closed on unparseable clock
+});
+
+test("approvedIssuers treats validity bounds as inclusive", () => {
+  const reg = { issuers: [issuer()] };
+  assert.deepEqual(
+    approvedIssuers(reg, "2026-01-01T00:00:00Z").map((i) => i.issuer_id),
+    ["did:web:issuer.test"],
+  ); // exactly valid_from
+  assert.deepEqual(
+    approvedIssuers(reg, "2027-01-01T00:00:00Z").map((i) => i.issuer_id),
+    ["did:web:issuer.test"],
+  ); // exactly valid_until
 });
 
 test("isRollback rejects older or unparseable generated_at, allows equal/newer", () => {
@@ -73,6 +86,7 @@ test("isRollback rejects older or unparseable generated_at, allows equal/newer",
   assert.equal(isRollback("2026-07-29T00:00:00Z", {}), true);
   assert.equal(isRollback("2026-07-29T00:00:00Z", { generated_at: "2026-07-29T00:00:00Z" }), false);
   assert.equal(isRollback("2026-07-29T00:00:00Z", { generated_at: "2026-07-30T00:00:00Z" }), false);
+  assert.equal(isRollback("2026-07-29T00:00:00Z", { generated_at: "garbage" }), true);
 });
 
 test("registryKeyFor finds only token_signing keys of the right issuer", () => {

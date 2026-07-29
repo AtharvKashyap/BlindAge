@@ -64,6 +64,7 @@ export const TOPUP_THRESHOLD = 2;
 
 export function approvedIssuers(registry, nowIso) {
   const now = Date.parse(nowIso);
+  if (Number.isNaN(now)) return []; // fail closed on an unparseable clock
   const out = [];
   for (const issuer of (registry && registry.issuers) || []) {
     if (issuer.status !== "active") continue;
