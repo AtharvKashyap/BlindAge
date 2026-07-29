@@ -19,6 +19,11 @@ small{color:#4a5568}
 <p><input type="file" id="importFile" accept=".json,application/json"></p>
 <textarea id="importText" placeholder='{"version":"1.0","tokens":[...]}'></textarea>
 <button id="importBtn">Import pasted text</button><div id="importMsg"></div></div>
+<div class="card"><strong>Trust</strong>
+<p><small>Signed issuer registry — verified locally against the root key.</small></p>
+<p><input id="tUrl" value="http://localhost:8700" style="width:100%" placeholder="registry mirror URL"></p>
+<p><input id="tRoot" style="width:100%" placeholder="root public key (base64url)"></p>
+<button id="trustBtn">Save &amp; refresh</button><div id="trustMsg"></div></div>
 <div class="card"><strong>Get tokens</strong>
 <p><small>Enroll with an issuer once, then mint anonymous tokens — no CLI needed.</small></p>
 <p><select id="issuerSelect" style="width:100%"></select></p>

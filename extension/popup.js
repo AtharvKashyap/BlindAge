@@ -1,5 +1,6 @@
 // extension/popup.js
 import { tokensFromParsed } from "./core/protocol.js";
+import { approvedIssuers } from "./core/registry.js";
 
 function send(msg) {
   return new Promise((resolve) => chrome.runtime.sendMessage(msg, resolve));
@@ -90,27 +91,41 @@ document.getElementById("importFile").addEventListener("change", (e) => {
 function syncIssuerControls(issuers) {
   const sel = document.getElementById("issuerSelect");
   const enrolled = issuers.find((r) => r.baseUrl === sel.value);
-  if (enrolled) document.getElementById("mIssuer").value = enrolled.baseUrl;
+  // A non-empty selection (enrolled record OR a registry endpoint) fills the
+  // issuer URL; "New issuer…" (value "") leaves the manual field untouched.
+  if (sel.value) document.getElementById("mIssuer").value = sel.value;
+  // Top-up only makes sense once enrolled; registry-only entries keep it hidden.
   document.getElementById("topup").hidden = !enrolled;
 }
 
 async function renderIssuers() {
   const { issuers } = await send({ type: "list_issuers" });
+  const enrolled = issuers || [];
   const sel = document.getElementById("issuerSelect");
   sel.textContent = "";
   const optNew = document.createElement("option");
   optNew.value = "";
   optNew.textContent = "New issuer…";
   sel.appendChild(optNew);
-  for (const rec of issuers || []) {
+  for (const rec of enrolled) {
     const o = document.createElement("option");
     o.value = rec.baseUrl;
     o.textContent = rec.baseUrl;
     sel.appendChild(o);
   }
-  if ((issuers || []).length) sel.value = issuers[issuers.length - 1].baseUrl;
-  sel.addEventListener("change", () => syncIssuerControls(issuers || []));
-  syncIssuerControls(issuers || []);
+  // Also offer registry-approved issuers the user hasn't enrolled with yet.
+  const { registry } = await send({ type: "get_registry" });
+  const enrolledUrls = new Set(enrolled.map((r) => r.baseUrl));
+  for (const i of approvedIssuers(registry, new Date().toISOString())) {
+    if (!i.endpoint || enrolledUrls.has(i.endpoint)) continue;
+    const o = document.createElement("option");
+    o.value = i.endpoint;
+    o.textContent = `${i.endpoint} (registry)`;
+    sel.appendChild(o);
+  }
+  if (enrolled.length) sel.value = enrolled[enrolled.length - 1].baseUrl;
+  sel.addEventListener("change", () => syncIssuerControls(enrolled));
+  syncIssuerControls(enrolled);
 }
 
 async function renderOnboardStatus() {
@@ -147,7 +162,59 @@ document.getElementById("mintBtn").addEventListener("click", async () => {
   if (r.ok) renderInventory();
 });
 
-renderIssuers();
+async function renderTrust() {
+  // Prefill the Trust inputs from stored settings. The popup is extension-
+  // privileged, so it reads chrome.storage.local directly (the message bus is
+  // for the service worker's decision logic, not for reading back saved fields).
+  const { trust } = await chrome.storage.local.get({ trust: null });
+  if (trust) {
+    if (trust.registryUrl) document.getElementById("tUrl").value = trust.registryUrl;
+    if (trust.rootKey) document.getElementById("tRoot").value = trust.rootKey;
+  }
+  const r = await send({ type: "refresh_registry" });
+  const el = document.getElementById("trustMsg");
+  if (r.ok) {
+    el.textContent = r.stale
+      ? `Using cached registry (${r.generatedAt}) — mirror unreachable.`
+      : `Registry OK (${r.generatedAt}), ${r.issuers} approved issuer(s).`;
+  } else {
+    el.textContent = "No registry: " + r.reason;
+  }
+  return r.ok;
+}
+
+document.getElementById("trustBtn").addEventListener("click", async () => {
+  const el = document.getElementById("trustMsg");
+  el.textContent = "Verifying…";
+  const r = await send({
+    type: "set_trust",
+    registryUrl: document.getElementById("tUrl").value.trim(),
+    rootKey: document.getElementById("tRoot").value.trim(),
+  });
+  el.textContent = r.ok
+    ? `Registry OK (${r.generatedAt}), ${r.issuers} approved issuer(s).`
+    : "Failed: " + r.reason;
+  if (r.ok) renderIssuers();
+});
+
+async function autoTopUp() {
+  const { results } = await send({ type: "auto_topup" });
+  const done = (results || []).filter((r) => r.ok);
+  if (done.length) {
+    const added = done.reduce((n, r) => n + (r.added || 0), 0);
+    document.getElementById("onboardMsg").textContent = `Topped up +${added} token(s).`;
+    renderInventory();
+  }
+  const failed = (results || []).filter((r) => !r.ok);
+  if (failed.length) {
+    document.getElementById("onboardMsg").textContent =
+      `Top-up failed for ${failed[0].issuer}: ${failed[0].reason}`;
+  }
+}
+
+// Trust-first init: verify the registry, then draw the issuer list (which is
+// registry-sourced) and run the single popup-open auto-top-up.
+renderTrust().then(() => { renderIssuers(); autoTopUp(); });
 renderOnboardStatus();
 renderInventory();
 renderPending();
