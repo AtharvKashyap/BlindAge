@@ -41,14 +41,57 @@ async function renderPending() {
   const tabId = await activeTabId();
   const res = await send({ type: "get_pending", tabId });
   const el = document.getElementById("pending");
-  if (!res || !res.pending) { el.innerHTML = ""; return; }
+  if (!res || !res.pending) { el.textContent = ""; return; }
   const c = res.consent;
-  el.innerHTML = `<div class="card consent">
-    <strong>${c.site}</strong> requests proof of <strong>${c.claim}</strong>
-    (min assurance ${c.assurance}).
-    <div class="recv">Will receive:<ul>${c.willReceive.map((x) => `<li>${x}</li>`).join("")}</ul></div>
-    <div class="norecv">Will NOT receive:<ul>${c.willNotReceive.map((x) => `<li>${x}</li>`).join("")}</ul></div>
-    <button id="allowBtn">Allow once</button><div id="allowMsg"></div></div>`;
+  el.textContent = "";
+
+  const card = document.createElement("div");
+  card.className = "card consent";
+
+  const siteStrong = document.createElement("strong");
+  siteStrong.textContent = c.site;
+  const claimStrong = document.createElement("strong");
+  claimStrong.textContent = c.claim;
+  card.appendChild(siteStrong);
+  card.appendChild(document.createTextNode(" requests proof of "));
+  card.appendChild(claimStrong);
+  card.appendChild(document.createTextNode(` (min assurance ${c.assurance}).`));
+
+  const recv = document.createElement("div");
+  recv.className = "recv";
+  recv.appendChild(document.createTextNode("Will receive:"));
+  const recvUl = document.createElement("ul");
+  for (const x of c.willReceive) {
+    const li = document.createElement("li");
+    li.textContent = x;
+    recvUl.appendChild(li);
+  }
+  recv.appendChild(recvUl);
+  card.appendChild(recv);
+
+  const norecv = document.createElement("div");
+  norecv.className = "norecv";
+  norecv.appendChild(document.createTextNode("Will NOT receive:"));
+  const norecvUl = document.createElement("ul");
+  for (const x of c.willNotReceive) {
+    const li = document.createElement("li");
+    li.textContent = x;
+    norecvUl.appendChild(li);
+  }
+  norecv.appendChild(norecvUl);
+  card.appendChild(norecv);
+
+  const allowBtn = document.createElement("button");
+  allowBtn.id = "allowBtn";
+  allowBtn.textContent = "Allow once";
+  card.appendChild(allowBtn);
+
+  const allowMsg = document.createElement("div");
+  allowMsg.id = "allowMsg";
+  card.appendChild(allowMsg);
+
+  el.appendChild(card);
+
   document.getElementById("allowBtn").addEventListener("click", async () => {
     const r = await send({ type: "approve", tabId });
     document.getElementById("allowMsg").textContent = r.ok ? "Sent ✓" : "Failed: " + r.reason;

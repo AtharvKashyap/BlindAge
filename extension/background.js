@@ -9,7 +9,7 @@ import {
   issuerOrigin, validIssuerRecord, matchPendingEnroll, pickLatestKey,
 } from "./core/onboard.js";
 import {
-  RegistryError, verifyRegistry, approvedIssuers, isRollback, registryKeyFor,
+  verifyRegistry, approvedIssuers, isRollback, registryKeyFor,
   topUpPlan, TOPUP_THRESHOLD,
 } from "./core/registry.js";
 
