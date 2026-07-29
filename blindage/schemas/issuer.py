@@ -38,6 +38,7 @@ class IssuerMetadata(BaseModel):
     issuer_id: str
     legal_name: str
     jurisdiction: str
+    endpoint: str | None = None  # issuer base URL, for client discovery (public data)
     supported_claims: list[AgeClaim]
     assurance_levels: list[AssuranceLevel]
     keys: list[IssuerKey]

@@ -28,37 +28,40 @@ def dev_key_entries() -> list[dict]:
     ]
 
 
+def dev_issuer_entry() -> dict:
+    return {
+        "version": "1.0",
+        "issuer_id": ISSUER_ID,
+        "legal_name": "Test Issuer",
+        "jurisdiction": "US",
+        "endpoint": "http://localhost:8400",
+        "supported_claims": ["AGE_OVER_18"],
+        "assurance_levels": ["AAL2"],
+        "keys": [
+            {
+                "key_id": DEV_KEY_18,
+                "purpose": "token_signing",
+                "algorithm": "rsabssa-sha384-pss-deterministic",
+                "public_key": DEV_RSA_PUB,
+                "claim": "AGE_OVER_18",
+                "assurance_level": "AAL2",
+                "epoch": "2026-Q3",
+                "valid_from": "2026-07-01T00:00:00Z",
+                "valid_until": "2026-10-01T00:00:00Z",
+            }
+        ],
+        "status": "active",
+        "valid_from": "2026-01-01T00:00:00Z",
+        "valid_until": "2027-01-01T00:00:00Z",
+    }
+
+
 def dev_registry() -> TrustRegistry:
     return TrustRegistry.from_dict(
         {
             "version": "1.0",
             "generated_at": "2026-07-21T00:00:00Z",
-            "issuers": [
-                {
-                    "version": "1.0",
-                    "issuer_id": ISSUER_ID,
-                    "legal_name": "Test Issuer",
-                    "jurisdiction": "US",
-                    "supported_claims": ["AGE_OVER_18"],
-                    "assurance_levels": ["AAL2"],
-                    "keys": [
-                        {
-                            "key_id": DEV_KEY_18,
-                            "purpose": "token_signing",
-                            "algorithm": "rsabssa-sha384-pss-deterministic",
-                            "public_key": DEV_RSA_PUB,
-                            "claim": "AGE_OVER_18",
-                            "assurance_level": "AAL2",
-                            "epoch": "2026-Q3",
-                            "valid_from": "2026-07-01T00:00:00Z",
-                            "valid_until": "2026-10-01T00:00:00Z",
-                        }
-                    ],
-                    "status": "active",
-                    "valid_from": "2026-01-01T00:00:00Z",
-                    "valid_until": "2027-01-01T00:00:00Z",
-                }
-            ],
+            "issuers": [dev_issuer_entry()],
         }
     )
 

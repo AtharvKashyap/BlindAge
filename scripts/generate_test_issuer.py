@@ -106,6 +106,7 @@ def main() -> None:
                 "issuer_id": ISSUER_ID,
                 "legal_name": "BlindAge Dev Issuer",
                 "jurisdiction": "US",
+                "endpoint": "http://localhost:8400",
                 "supported_claims": CLAIMS,
                 "assurance_levels": ["AAL2"],
                 "keys": registry_keys,
