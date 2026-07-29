@@ -35,6 +35,11 @@ def idp_app():
     return create_idp()
 
 
+def mirror_app():
+    from blindage.registry_mirror.app import create_mirror
+    return create_mirror(DEV)
+
+
 def site_app():
     registry = TrustRegistry.load(
         DEV / "registry.json", DEV / "registry.sig", (DEV / "root_public_key.txt").read_text().strip()

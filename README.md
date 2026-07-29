@@ -7,7 +7,8 @@ once and issues unlinkable, single-use anonymous age tokens. Websites learn
 only whether the user satisfies a threshold (e.g. `AGE_OVER_18`) — never
 identity. The issuer never learns where tokens are used.
 
-> **Status: Phase 7 (real identity-proofing adapter).** The wallet blinds token
+> **Status: Phase 8 (registry-sourced issuer trust + auto-top-up) — the
+> everyday-user track is complete.** The wallet blinds token
 > messages (RFC 9474 RSABSSA); the issuer signs values it cannot read;
 > websites verify standard RSA-PSS signatures. The issuer can no longer link
 > issuance to redemption — the property this project exists for. Conformance
@@ -27,6 +28,17 @@ identity. The issuer never learns where tokens are used.
 > **SIMULATED / TEST-ONLY** (it verifies nothing); real proofing means pointing
 > `OidcConfig` at a real IdP. Do not deploy.
 >
+> Since Phase 8 the extension trusts only **registry-approved issuers**: it
+> downloads a signed trust registry, verifies the root Ed25519 signature over
+> canonical JSON *locally* (vector-gated like the RFC 9474 port), rejects
+> rollbacks, caches the result, and is **fail-closed** — with no verified
+> registry it enrolls and mints nothing. Enrollment and minting are additionally
+> gated on an exact issuer + key match against the registry. Inventory
+> auto-tops-up (mint a batch of 5 when a claim drops below 2) on popup open. The
+> registry trust anchor is still a **manually pasted dev root key** and the
+> mirror is a dev convenience — production anchoring is Phase 9 (blockchain
+> registry). Do not deploy.
+>
 > BlindAge provides privacy-preserving age *assurance*, not perfect age
 > *enforcement* — it cannot fully prevent voluntary token sharing. The honest
 > comparison is not "BlindAge vs perfect verification" but "BlindAge vs every
@@ -41,7 +53,7 @@ python3 -m venv .venv
 ./scripts/run_protocol_demo.sh         # end-to-end demo: enroll → mint → prove → redeem → replay-reject
 ```
 
-## Browser extension (Phase 4–7)
+## Browser extension (Phase 4–8)
 
 A Chrome extension (Manifest V3, vanilla JS, no build step). It detects a site's
 age gate, shows a consent prompt, presents one stored anonymous token, and marks
@@ -65,6 +77,28 @@ and POSTs only blinded messages, so the issuer still cannot link issuance to
 redemption. Identity (the DOB / OIDC claims) flows only to the issuer on the
 issuer's own origin — it never enters the extension.
 
+Since Phase 8 the extension is **registry-gated**. In the popup's **Trust** card
+you enter a registry URL and the root Ed25519 public key, then "Save & refresh".
+The extension downloads the signed registry, verifies the root signature over
+canonical JSON entirely in-browser (Web Crypto Ed25519; the canonicalization is
+vector-gated exactly like the RFC 9474 port), rejects a registry older than the
+one it has cached (rollback protection), and caches the verified result. Trust is
+**fail-closed**: with no configured/verified registry the extension enrolls and
+mints nothing, and the "Get tokens" issuer dropdown is populated *only* from the
+registry (each issuer's `endpoint` field). Enrollment and minting are gated on an
+exact issuer + signing-key match against the registry, so a token can only be
+minted under a key the registry currently approves.
+
+Inventory **auto-tops-up**: when the popup opens, any claim with fewer than 2
+tokens triggers a mint of a fresh batch of 5. Top-up runs only on popup open (not
+on a timer or at redemption) so that minting never correlates in time with a
+redemption — preserving the issuance↔redemption unlinkability the project exists
+for. The registry trust anchor is a manually pasted dev root key and the mirror
+is a dev convenience; production anchoring arrives in Phase 9 (blockchain
+registry). This completes the **everyday-user track**: prove age once, then
+one-click anonymous presentations everywhere, with issuer trust sourced from a
+signed registry.
+
 > **The bundled dev IdP is SIMULATED / TEST-ONLY.** It verifies no real identity
 > documents — it just lets you pick a persona (or type any DOB) and mints a
 > matching ID token with a fresh random `sub` per authorization. Real production
@@ -75,16 +109,20 @@ issuer's own origin — it never enters the extension.
 > docs/decisions.md); the port is vector-gated against RFC 9474 Appendix A only.
 
 The one-command browser demo runs the issuer in OIDC mode against the simulated
-dev IdP, plus the example site:
+dev IdP, the example site, and the dev registry mirror:
 
 ```bash
-./scripts/run_browser_demo.sh   # dev IdP :8600 + issuer (OIDC) :8400 + site :8500
+./scripts/run_browser_demo.sh   # dev IdP :8600 + issuer (OIDC) :8400 + site :8500 + registry mirror :8700
 ```
 
-Then load `extension/` unpacked (chrome://extensions → Developer mode → Load
-unpacked). In the popup, click "Enroll & get tokens"; the issuer redirects you to
-the simulated dev IdP, where you pick a persona; your inventory then fills. Open
+It prints the registry root public key. Load `extension/` unpacked
+(chrome://extensions → Developer mode → Load unpacked). First, in the popup's
+**Trust** card, enter registry `http://localhost:8700` and paste the printed root
+key, then "Save & refresh" (without this the extension is fail-closed and mints
+nothing). Then click "Enroll & get tokens"; the issuer redirects you to the
+simulated dev IdP, where you pick a persona; your inventory then fills. Open
 `http://localhost:8500/protected`, click the BlindAge icon, and "Allow once".
+Tokens auto-top-up when a claim drops below 2 on popup open.
 
 To run a plain test-mode issuer (DOB form, no IdP) and a protected site instead:
 

@@ -49,12 +49,20 @@ then one-click anonymous presentations everywhere.
    disabled in OIDC mode [403]; a CI-blocking privacy test pins the enrollment DB to exactly
    (enrollment_id, date_of_birth, expires_at). Demo: `BLINDAGE_PROOFING=oidc` +
    `scripts/run_browser_demo.sh`. Zero extension changes — the bridge contract is unchanged).
-8. **Registry-sourced issuer trust + inventory/auto-top-up** — the extension lists only
-   registry-approved issuers (absorbs the former "signed registry distribution": download,
-   root-signature verification, caching, rollback detection, revocation) and auto-mints
-   when low.
+8. **Registry-sourced issuer trust + inventory/auto-top-up** — ✅ complete (the extension
+   trusts only registry-approved issuers: it downloads a signed trust registry, verifies the
+   root Ed25519 signature over canonical JSON in-browser [Web Crypto, vector-gated like the
+   RFC 9474 port], rejects rollbacks, caches the result, and is fail-closed [no verified
+   registry ⇒ no enroll, no mint]; enroll and mint are gated on an exact issuer + 5-field
+   signing-key match, and the popup's issuer dropdown is populated only from the registry.
+   Inventory auto-tops-up on popup open [mint 5 when a claim drops below 2] — popup-open only
+   so minting never correlates in time with a redemption. A dev registry mirror
+   [`blindage/registry_mirror`, raw passthrough] serves the signed artifact; the trust anchor
+   is a manually pasted dev root key, so not for deployment — production anchoring is the
+   blockchain-registry phase. Absorbs the former "signed registry distribution". This
+   completes the everyday-user track).
 
-**Trust/hardening track** (unchanged, follows the everyday-user track):
+**Trust/hardening track** (unchanged, follows the everyday-user track — up next):
 - **Blockchain registry** — issuer registry / revocation-root / transparency contracts,
    timelocked governance, mirrors. User data stays entirely off-chain.
 - **Selective-disclosure verifiable credentials** — reusable VC mode, randomized
