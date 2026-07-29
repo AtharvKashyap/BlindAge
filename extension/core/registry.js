@@ -59,3 +59,48 @@ export async function verifyRegistry(registryText, sigB64u, rootKeyB64u) {
   if (!ok) throw new RegistryError("registry signature verification failed");
   return registry;
 }
+
+export const TOPUP_THRESHOLD = 2;
+
+export function approvedIssuers(registry, nowIso) {
+  const now = Date.parse(nowIso);
+  const out = [];
+  for (const issuer of (registry && registry.issuers) || []) {
+    if (issuer.status !== "active") continue;
+    const from = Date.parse(issuer.valid_from);
+    const until = Date.parse(issuer.valid_until);
+    if (Number.isNaN(from) || Number.isNaN(until)) continue;
+    if (now < from || now > until) continue;
+    out.push(issuer);
+  }
+  return out;
+}
+
+export function isRollback(cachedGeneratedAt, fresh) {
+  const freshAt = Date.parse(fresh && fresh.generated_at);
+  if (Number.isNaN(freshAt)) return true;
+  return freshAt < Date.parse(cachedGeneratedAt);
+}
+
+export function registryKeyFor(registry, issuerId, keyId) {
+  for (const issuer of (registry && registry.issuers) || []) {
+    if (issuer.issuer_id !== issuerId) continue;
+    for (const key of issuer.keys || []) {
+      if (key.purpose === "token_signing" && key.key_id === keyId) return key;
+    }
+  }
+  return null;
+}
+
+export function topUpPlan(tokens, issuers, { claim, threshold, batch }) {
+  const counts = {};
+  for (const t of tokens || []) {
+    if (t.spent || t.claim !== claim) continue;
+    counts[t.issuer_id] = (counts[t.issuer_id] || 0) + 1;
+  }
+  const plan = [];
+  for (const rec of issuers || []) {
+    if ((counts[rec.issuerId] || 0) < threshold) plan.push({ issuer: rec, count: batch });
+  }
+  return plan;
+}
