@@ -62,9 +62,28 @@ then one-click anonymous presentations everywhere.
    blockchain-registry phase. Absorbs the former "signed registry distribution". This
    completes the everyday-user track).
 
-**Trust/hardening track** (unchanged, follows the everyday-user track — up next):
-- **Blockchain registry** — issuer registry / revocation-root / transparency contracts,
-   timelocked governance, mirrors. User data stays entirely off-chain.
+**Trust/hardening track** (follows the everyday-user track):
+
+9. **Blockchain registry anchor** — ✅ complete (anchor slice). An on-chain
+   `RegistryAnchor` (Solidity/Foundry in `registry/contracts`) stores ONLY the
+   keccak256 of the canonical registry JSON + `generated_at` + a monotonic `version`
+   + `updated_at`, plus an `AnchorUpdated` event — never identity/token/redemption/
+   domain data, not even hashed (rule 3, enforced by an ABI privacy test and on-chain
+   strict-increase checks). Updates flow only through an OpenZeppelin
+   `TimelockController`. Python primitives (`registry_keccak`, a cached `AnchorClient`),
+   a deploy helper, and a timelocked publisher run on web3.py; `scripts/run_chain_demo.sh`
+   drives the full flow. Opt-in parties fail closed on a mismatch — the registry mirror
+   returns 503, the verifier SDK's `TrustRegistry.load(..., anchor=...)` raises
+   `RegistryError` — both caching the chain read (no per-request query). This fixes the
+   Phase 8 freeze/rollback limitation at the root, but **only for parties that check the
+   anchor** (mirror operators, verifier SDK opt-in); the extension still trusts its
+   pasted root key, unchanged this phase. **Local anvil only** — dev-short timelock delay
+   (1s in tests/demo vs days in production), anvil dev key hardcoded in the demo, no
+   testnet/mainnet deployment. `scripts/test_contracts.sh` (forge build/test + `tests/chain`)
+   is wired into `scripts/ci.sh` and exits 0 with a notice when Foundry is absent.
+   **Deferred to later trust-track work:** transparency-log server + auditor (the
+   `AnchorUpdated` events are its data source), a `RevocationRoots` contract, a multi-sig
+   proposer ceremony, and an extension→RPC path.
 - **Selective-disclosure verifiable credentials** — reusable VC mode, randomized
    presentations, no stable credential IDs.
 - **Hybrid post-quantum signatures** — ML-DSA + Ed25519 on the trust layer, downgrade
@@ -110,3 +129,10 @@ physical_token_demo/         # optional low-assurance demo module (clearly label
   refetch-on-`kid`-miss to survive IdP key rotation), multi-audience ID tokens are not
   `azp`-checked, and abandoned proofing sessions are never purged from the in-memory
   `ProofingSessionStore` (needs a sweep-on-create or size cap).
+- The Phase 8 registry freeze/rollback limitation (a blocked mirror can pin clients on a
+  stale-but-signed registry) is now mitigated **at the root** by the Phase 9 on-chain
+  anchor — but only for parties that check it (mirror operators, verifier SDK opt-in). The
+  extension still trusts its pasted root key (extension→RPC is deferred), and the anchor is
+  local-anvil-only with no testnet/mainnet deployment. Remaining trust-track deferrals: a
+  transparency-log server + auditor (consuming the `AnchorUpdated` events), a
+  `RevocationRoots` contract, and a multi-sig proposer ceremony.

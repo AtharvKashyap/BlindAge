@@ -6,3 +6,6 @@ cd "$(dirname "$0")/.."
 PY=${PYTHON:-.venv/bin/python}
 "$PY" -m pytest -q --tb=short
 ./scripts/test_extension.sh
+# Contract gate: full run when Foundry is installed, otherwise a green no-op
+# notice (see scripts/test_contracts.sh) so core CI stays portable.
+./scripts/test_contracts.sh
