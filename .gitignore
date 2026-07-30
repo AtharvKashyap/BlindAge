@@ -41,6 +41,11 @@ registry.local.*
 .vscode/
 *.swp
 
+# Foundry / smart contracts
+registry/contracts/lib/
+registry/contracts/out/
+registry/contracts/cache/
+
 # SDD scratch
 .superpowers/
 
