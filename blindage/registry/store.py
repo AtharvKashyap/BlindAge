@@ -1,3 +1,10 @@
+"""Trust registry loader and lookups.
+
+``TrustRegistry.load`` accepts an optional ``anchor`` to gate a loaded registry
+against an on-chain hash (fail closed on mismatch or lookup failure).
+``blindage.registry_chain`` is imported lazily inside ``load`` so this module
+stays importable without web3 in minimal environments.
+"""
 import json
 from pathlib import Path
 
@@ -55,13 +62,33 @@ class TrustRegistry:
 
     @classmethod
     def load(
-        cls, registry_path: Path, signature_path: Path, root_public_key_b64: str
+        cls,
+        registry_path: Path,
+        signature_path: Path,
+        root_public_key_b64: str,
+        *,
+        anchor=None,
     ) -> "TrustRegistry":
         try:
             data = json.loads(Path(registry_path).read_text())
             signature = Path(signature_path).read_text().strip()
             if not verify_registry_signature(data, signature, root_public_key_b64):
                 raise RegistryError("registry signature verification failed")
+            if anchor is not None:
+                # Fail closed: an opt-in anchor gate that cannot be evaluated is
+                # a hard error, never a silent fallback. Lazy import keeps this
+                # module importable without web3 in minimal environments.
+                from blindage.registry_chain.anchor import (
+                    AnchorError,
+                    registry_keccak,
+                )
+
+                try:
+                    onchain = anchor.current()["registry_hash"]
+                except AnchorError as exc:
+                    raise RegistryError(f"anchor check unavailable: {exc}") from exc
+                if registry_keccak(data) != onchain:
+                    raise RegistryError("registry does not match the on-chain anchor")
             return cls.from_dict(data)
         except RegistryError:
             raise

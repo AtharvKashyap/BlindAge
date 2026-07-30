@@ -82,3 +82,25 @@ def test_publisher_rejects_non_monotonic(stack):
             w3, account, addrs["anchor"], addrs["timelock"], V["registry"],
             version=1, delay=1,
         )
+
+
+def test_mirror_and_verifier_against_live_anchor(stack, tmp_path):
+    from fastapi.testclient import TestClient
+
+    from blindage.registry import TrustRegistry, generate_root_keypair, sign_registry
+    from blindage.registry_chain.anchor import AnchorClient
+    from blindage.registry_mirror.app import create_mirror
+
+    w3, account, addrs = stack  # anchor already holds V["registry"] from the roundtrip test
+    priv, pub = generate_root_keypair()
+    (tmp_path / "registry.json").write_text(json.dumps(V["registry"]))
+    (tmp_path / "registry.sig").write_text(sign_registry(V["registry"], priv))
+    client = AnchorClient(RPC, addrs["anchor"], cache_ttl=0.0)
+
+    mirror = TestClient(create_mirror(tmp_path, anchor=client))
+    assert mirror.get("/registry.json").status_code == 200
+
+    reg = TrustRegistry.load(
+        tmp_path / "registry.json", tmp_path / "registry.sig", pub, anchor=client
+    )
+    assert reg.get_issuer("did:web:issuer.test") is not None
