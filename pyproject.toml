@@ -13,6 +13,7 @@ dependencies = [
     "argon2-cffi>=23.1",
     "PyJWT>=2.8",
     "python-multipart>=0.0.9",
+    "web3>=6",
 ]
 
 [project.optional-dependencies]
