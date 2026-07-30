@@ -83,7 +83,9 @@ then one-click anonymous presentations everywhere.
    is wired into `scripts/ci.sh` and exits 0 with a notice when Foundry is absent.
    **Deferred to later trust-track work:** transparency-log server + auditor (the
    `AnchorUpdated` events are its data source), a `RevocationRoots` contract, a multi-sig
-   proposer ceremony, and an extension→RPC path.
+   proposer ceremony, and an extension→RPC path. Production gate: `AnchorClient` trusts
+   whatever RPC endpoint it is given — add chain-id and contract-code verification before
+   any non-dev deployment.
 - **Selective-disclosure verifiable credentials** — reusable VC mode, randomized
    presentations, no stable credential IDs.
 - **Hybrid post-quantum signatures** — ML-DSA + Ed25519 on the trust layer, downgrade
