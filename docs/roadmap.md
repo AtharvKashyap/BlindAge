@@ -1,6 +1,6 @@
 # BlindAge Roadmap and Target Project Tree
 
-Phases (spec §14, `docs/superpowers/specs/2026-07-21-blindage-design.md`):
+Phases:
 
 1. **Foundation + non-crypto skeleton** — ✅ complete (mock HMAC tokens, end-to-end loop,
    signed local registry, verifier SDK, example site, CLI wallet, privacy/adversarial
@@ -19,7 +19,7 @@ Phases (spec §14, `docs/superpowers/specs/2026-07-21-blindage-design.md`):
    vanilla JS, no build step; detects a site's age gate, consent UI, origin/expiry
    validation, token inventory; example site serves HTML age gates; `blindage export`
    feeds tokens in; extension core unit-tested under Node and wired into CI).
-**Everyday-user track** (design: `docs/superpowers/specs/2026-07-22-everyday-user-design.md`).
+**Everyday-user track.**
 Reprioritized to turn the demo into a self-service, extension-only tool: prove age once,
 then one-click anonymous presentations everywhere.
 

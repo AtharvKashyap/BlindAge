@@ -195,9 +195,8 @@ absent it prints a notice and exits 0, so core CI stays green on any machine.
 
 ## Documents
 
-- `docs/superpowers/specs/2026-07-21-blindage-design.md` — authoritative design spec
-- `CLAUDE.md` — project constitution (non-negotiable privacy/crypto rules)
-- `docs/superpowers/plans/2026-07-21-phase1-foundation.md` — Phase 1 plan
+- `docs/roadmap.md` — phase status and target project tree
+- `docs/decisions.md` — crypto/architecture decision log
 
 ## Known limitations (pre-deployment)
 

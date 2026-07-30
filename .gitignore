@@ -50,3 +50,7 @@ registry/contracts/cache/
 .superpowers/
 
 config/dev/
+
+# Internal working docs — kept local, never pushed
+CLAUDE.md
+docs/superpowers/
