@@ -2,6 +2,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from blindage.crypto import generate_blind_keypair
+from blindage.crypto.bbs import generate_bbs_keypair
 from blindage.example_site.app import create_site
 from blindage.issuer.app import create_app as create_issuer
 from blindage.issuer.keys import IssuerKeyStore
@@ -10,7 +11,9 @@ from blindage.registry import TrustRegistry
 
 ISSUER_ID = "did:web:issuer.test"
 DEV_KEY_18 = "dev-AGE_OVER_18-AAL2-2026-Q3"
+DEV_VC_KEY = "dev-vc-AAL2-2026-Q3"
 DEV_RSA_PRIV, DEV_RSA_PUB = generate_blind_keypair(2048)
+DEV_VC_PRIV, DEV_VC_PUB = generate_bbs_keypair()
 
 
 def dev_key_entries() -> list[dict]:
@@ -18,13 +21,24 @@ def dev_key_entries() -> list[dict]:
         {
             "key_id": DEV_KEY_18,
             "algorithm": "rsabssa-sha384-pss-deterministic",
+            "purpose": "token_signing",
             "private_key_b64": DEV_RSA_PRIV,
             "public_key_b64": DEV_RSA_PUB,
             "claim": "AGE_OVER_18",
             "assurance_level": "AAL2",
             "epoch": "2026-Q3",
             "valid_until": "2026-10-01T00:00:00Z",
-        }
+        },
+        {
+            "key_id": DEV_VC_KEY,
+            "algorithm": "bbs-bls12381-sha256",
+            "purpose": "vc_signing",
+            "private_key_b64": DEV_VC_PRIV,
+            "public_key_b64": DEV_VC_PUB,
+            "assurance_level": "AAL2",
+            "epoch": "2026-Q3",
+            "valid_until": "2026-10-01T00:00:00Z",
+        },
     ]
 
 
@@ -48,7 +62,17 @@ def dev_issuer_entry() -> dict:
                 "epoch": "2026-Q3",
                 "valid_from": "2026-07-01T00:00:00Z",
                 "valid_until": "2026-10-01T00:00:00Z",
-            }
+            },
+            {
+                "key_id": DEV_VC_KEY,
+                "purpose": "vc_signing",
+                "algorithm": "bbs-bls12381-sha256",
+                "public_key": DEV_VC_PUB,
+                "assurance_level": "AAL2",
+                "epoch": "2026-Q3",
+                "valid_from": "2026-07-01T00:00:00Z",
+                "valid_until": "2026-10-01T00:00:00Z",
+            },
         ],
         "status": "active",
         "valid_from": "2026-01-01T00:00:00Z",

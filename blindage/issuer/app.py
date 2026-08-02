@@ -6,11 +6,22 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from pydantic import BaseModel, ConfigDict
 
 from blindage.crypto import RSABSSA_ALGORITHM, BlindSignatureError, b64u_decode, b64u_encode, blind_sign
+from blindage.crypto.bbs import bbs_sign
 from blindage.issuer.eligibility import eligible_claims
 from blindage.issuer.keys import IssuerKeyStore, public_material
 from blindage.issuer.proofing import OidcProofing, ProofingError, TestDobProofing
 from blindage.issuer.storage import EnrollmentStore
-from blindage.schemas import TokenIssueRequest, TokenIssueResponse, token_message
+from blindage.schemas import (
+    VC_HEADER,
+    AgeClaim,
+    AgeCredential,
+    AssuranceLevel,
+    CredentialIssueRequest,
+    TokenIssueRequest,
+    TokenIssueResponse,
+    token_message,
+    vc_message_vector,
+)
 
 MAX_BATCH = 100
 ENROLLMENT_TTL_DAYS = 365
@@ -142,6 +153,39 @@ def create_app(
             expires_at=datetime.fromisoformat(valid_until.replace("Z", "+00:00")),
         )
 
+    @app.post("/v1/credentials/issue")
+    def issue_credential(req: CredentialIssueRequest) -> AgeCredential:
+        # Reuses the SAME enrollment gates as token issuance: an enrollment_id
+        # proves eligibility without re-identifying the user, and it is disabled
+        # by neither OIDC nor asserted-DOB mode (only POST /v1/enrollment is).
+        row = enrollment_store.get(req.enrollment_id)
+        if row is None:
+            raise HTTPException(404, detail="unknown enrollment")
+        dob, expires_at = row
+        now = datetime.now(timezone.utc)
+        if now >= expires_at:
+            raise HTTPException(403, detail="enrollment expired")
+        claims = sorted(c.value for c in eligible_claims(dob, now.date()))
+        if not claims:
+            raise HTTPException(403, detail="not eligible for any claim")
+        signer = key_store.vc_signer_for()
+        if signer is None:
+            raise HTTPException(409, detail="no vc signing key configured")
+        key_id, private_key_b64, assurance_level, epoch = signer
+        # BBS is NOT blind: the issuer signs the full, ordered message vector.
+        # Unlinkability is delivered by selective-disclosure proofs at
+        # presentation time, not here.
+        messages = vc_message_vector(issuer_id, assurance_level, epoch, claims)
+        signature = b64u_encode(bbs_sign(private_key_b64, VC_HEADER, messages))
+        return AgeCredential(
+            issuer_id=issuer_id,
+            issuer_key_id=key_id,
+            assurance_level=AssuranceLevel(assurance_level),
+            epoch=epoch,
+            claims=[AgeClaim(c) for c in claims],
+            signature=signature,
+        )
+
     @app.get("/.well-known/blindage-issuer.json")
     def well_known() -> dict:
         keys = []
@@ -154,6 +198,22 @@ def create_app(
                     "algorithm": algorithm,
                     "public_key": public_key,
                     "claim": e["claim"],
+                    "assurance_level": e["assurance_level"],
+                    "epoch": e["epoch"],
+                    "valid_from": "2026-07-01T00:00:00Z",
+                    "valid_until": e["valid_until"],
+                }
+            )
+        for e in key_store.vc_entries():
+            algorithm, public_key = public_material(e)
+            keys.append(
+                {
+                    "key_id": e["key_id"],
+                    "purpose": "vc_signing",
+                    "algorithm": algorithm,
+                    "public_key": public_key,
+                    # vc keys carry assurance + epoch but no single claim.
+                    "claim": None,
                     "assurance_level": e["assurance_level"],
                     "epoch": e["epoch"],
                     "valid_from": "2026-07-01T00:00:00Z",

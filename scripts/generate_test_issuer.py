@@ -13,6 +13,7 @@ import json
 import secrets
 
 from blindage.crypto import b64u_encode, generate_blind_keypair, generate_token_keypair
+from blindage.crypto.bbs import BBS_ALGORITHM, generate_bbs_keypair
 from blindage.registry import generate_root_keypair, sign_registry
 
 CLAIMS = ["AGE_OVER_13", "AGE_OVER_16", "AGE_OVER_18", "AGE_OVER_21"]
@@ -96,6 +97,35 @@ def main() -> None:
                 "valid_until": args.valid_until,
             }
         )
+
+    # vc_signing BBS key: reusable multi-claim age credentials (Phase 10). Not
+    # partitioned by claim; unlinkability comes from selective-disclosure proofs.
+    vc_key_id = f"dev-vc-AAL2-{args.epoch}"
+    vc_priv, vc_pub = generate_bbs_keypair()
+    key_entries.append(
+        {
+            "key_id": vc_key_id,
+            "algorithm": BBS_ALGORITHM,
+            "purpose": "vc_signing",
+            "private_key_b64": vc_priv,
+            "public_key_b64": vc_pub,
+            "assurance_level": "AAL2",
+            "epoch": args.epoch,
+            "valid_until": args.valid_until,
+        }
+    )
+    registry_keys.append(
+        {
+            "key_id": vc_key_id,
+            "purpose": "vc_signing",
+            "algorithm": BBS_ALGORITHM,
+            "public_key": vc_pub,
+            "assurance_level": "AAL2",
+            "epoch": args.epoch,
+            "valid_from": args.valid_from,
+            "valid_until": args.valid_until,
+        }
+    )
 
     registry = {
         "version": "1.0",

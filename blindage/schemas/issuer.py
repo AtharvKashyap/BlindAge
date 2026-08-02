@@ -10,7 +10,7 @@ class IssuerKey(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     key_id: str
-    purpose: Literal["token_signing", "registry"]
+    purpose: Literal["token_signing", "vc_signing", "registry"]
     algorithm: str
     public_key: str
     claim: AgeClaim | None = None
@@ -28,6 +28,16 @@ class IssuerKey(BaseModel):
                 )
             if not self.epoch:
                 raise ValueError("epoch must be a non-empty string")
+        if self.purpose == "vc_signing":
+            # vc_signing keys bind assurance_level + epoch (key partitioning) but
+            # NOT a single claim: one credential carries every eligible claim, and
+            # the claim→key binding that tokens rely on does not apply.
+            if self.assurance_level is None or not self.epoch:
+                raise ValueError(
+                    "vc_signing keys must bind assurance_level and a non-empty epoch"
+                )
+            if self.claim is not None:
+                raise ValueError("vc_signing keys must not bind a single claim")
         return self
 
 

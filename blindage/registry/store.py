@@ -52,6 +52,15 @@ class TrustRegistry:
                             f"key material reuse detected for key_id {key.key_id!r}"
                         )
                     seen_material.add(key.public_key)
+                elif key.purpose == "vc_signing":
+                    # vc keys have claim=None, so they take no part in the
+                    # (claim, assurance, epoch) tuple check — only key-material
+                    # uniqueness applies.
+                    if key.public_key in seen_material:
+                        raise RegistryError(
+                            f"key material reuse detected for key_id {key.key_id!r}"
+                        )
+                    seen_material.add(key.public_key)
         for issuer in issuers:
             for key in issuer.keys:
                 if key.purpose == "registry" and key.public_key in seen_material:

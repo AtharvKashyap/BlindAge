@@ -20,8 +20,20 @@ from blindage.schemas.token import (
     TokenIssueResponse,
     token_message,
 )
+from blindage.schemas.vc import (
+    VC_HEADER,
+    AgeCredential,
+    CredentialIssueRequest,
+    VcPresentation,
+    vc_message_vector,
+)
 
 __all__ = [
+    "VC_HEADER",
+    "AgeCredential",
+    "CredentialIssueRequest",
+    "VcPresentation",
+    "vc_message_vector",
     "CLAIM_MIN_AGE",
     "AgeClaim",
     "AgeToken",
