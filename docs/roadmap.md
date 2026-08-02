@@ -155,8 +155,14 @@ then one-click anonymous presentations everywhere.
   Production gates still open: swap the pure-Python RSABSSA and BBS for audited
   native/WASM implementations, and add chain-id + contract-code verification to
   `AnchorClient` (and, for the auditor, cross-check independent RPC providers).
-- **Research** (the only remaining track) — ZK age-comparison proofs; PQ anonymous
-  credentials.
+- **Research** — ✅ surveyed (2026-08): `docs/research/zk-age-proofs.md` (candidate: a
+  Noir date-predicate PoC; nothing ships until a proving library clears the
+  audited-native bar) and `docs/research/pq-anonymous-credentials.md` (staged
+  watch-and-adopt plan; no reviewed PQ-AC library exists yet — the credential core
+  stays classical by conscious decision, bounded by single-use tokens + short epochs).
+  Every planned track is now either built or consciously closed; future work items are
+  the production gates listed in README "Known limitations" and the research triggers
+  in the two surveys.
 
 ## Target directory tree (directories are created per phase [MOD-5])
 
