@@ -15,6 +15,13 @@ from blindage.crypto.factory import (
     UnsupportedAlgorithmError,
     verifier_from_issuer_key,
 )
+from blindage.crypto.bbs import (
+    BBS_ALGORITHM,
+    BbsError,
+    bbs_sign,
+    bbs_verify,
+    generate_bbs_keypair,
+)
 from blindage.crypto.rsabssa import (
     RSABSSA_ALGORITHM,
     BlindSignatureError,
@@ -47,4 +54,9 @@ __all__ = [
     "blind_sign",
     "finalize",
     "generate_blind_keypair",
+    "BBS_ALGORITHM",
+    "BbsError",
+    "bbs_sign",
+    "bbs_verify",
+    "generate_bbs_keypair",
 ]
