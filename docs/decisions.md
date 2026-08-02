@@ -112,7 +112,7 @@ docs/roadmap.md.
 ## 2026-08-02 — ML-DSA-65 via cryptography/OpenSSL (hybrid trust layer)
 
 **Decision:** Add a second, post-quantum signature over the trust registry —
-ML-DSA-65 (FIPS 204, the standardized Dilichium) alongside the existing Ed25519
+ML-DSA-65 (FIPS 204, the standardized Dilithium) alongside the existing Ed25519
 root signature — using `cryptography` 49's `MLDSA65` primitives (OpenSSL-backed),
 in `blindage/registry/signing.py`. A `RegistryPolicy` enum
 (`classical-only` / `hybrid-preferred` / `hybrid-required`) selects how strictly
