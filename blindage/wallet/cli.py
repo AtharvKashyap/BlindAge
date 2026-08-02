@@ -6,7 +6,14 @@ import httpx
 import typer
 
 from blindage.schemas import AgeClaim, AssuranceLevel, VerifierChallenge
-from blindage.wallet.client import WalletError, build_presentation, enroll, mint
+from blindage.wallet.client import (
+    WalletError,
+    build_presentation,
+    enroll,
+    mint,
+    vc_get,
+    vc_prove,
+)
 from blindage.wallet.vault import StoredToken, VaultData, WalletVault
 
 app = typer.Typer(help="BlindAge wallet (Phase 3, blind issuance — local dev only)")
@@ -100,6 +107,52 @@ def prove_cmd(
     vault.save(data)  # persists the spent flag BEFORE releasing the presentation
     out.write_text(presentation.model_dump_json(indent=2))
     typer.echo(f"Presentation written to {out} (token marked spent).")
+
+
+@app.command("vc-get")
+def vc_get_cmd(
+    issuer: str = typer.Option(...),
+    vault_path: Path = VaultOpt,
+    passphrase: str = PassOpt,
+) -> None:
+    vault, data = _open_vault(vault_path, passphrase)
+    enrollment_id = data.enrollments.get(issuer)
+    if enrollment_id is None:
+        typer.echo(f"Not enrolled with {issuer} — run `blindage enroll` first.")
+        raise typer.Exit(code=1)
+    try:
+        with make_http_client(issuer) as http:
+            credential = vc_get(http, enrollment_id)
+    except WalletError as exc:
+        typer.echo(str(exc))
+        raise typer.Exit(code=1)
+    data.credentials[issuer] = credential
+    vault.save(data)
+    claims = ", ".join(c.value for c in credential.claims)
+    typer.echo(f"Stored reusable credential from {issuer} (claims: {claims}).")
+
+
+@app.command("vc-prove")
+def vc_prove_cmd(
+    issuer: str = typer.Option(...),
+    challenge_file: Path = typer.Option(..., "--challenge-file"),
+    out: Path = typer.Option(..., "--out"),
+    vault_path: Path = VaultOpt,
+    passphrase: str = PassOpt,
+) -> None:
+    _, data = _open_vault(vault_path, passphrase)
+    credential = data.credentials.get(issuer)
+    if credential is None:
+        typer.echo(f"No credential from {issuer} — run `blindage vc-get` first.")
+        raise typer.Exit(code=1)
+    challenge = VerifierChallenge.model_validate_json(challenge_file.read_text())
+    try:
+        presentation = vc_prove(credential, challenge)
+    except WalletError as exc:
+        typer.echo(str(exc))
+        raise typer.Exit(code=1)
+    out.write_text(presentation.model_dump_json(indent=2))
+    typer.echo(f"VC presentation written to {out} (credential is reusable).")
 
 
 @app.command("export")

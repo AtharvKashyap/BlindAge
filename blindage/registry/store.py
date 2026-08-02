@@ -119,3 +119,12 @@ class TrustRegistry:
             if key.key_id == key_id and key.purpose == "token_signing":
                 return key
         return None
+
+    def get_vc_key(self, issuer_id: str, key_id: str) -> IssuerKey | None:
+        issuer = self.get_issuer(issuer_id)
+        if issuer is None:
+            return None
+        for key in issuer.keys:
+            if key.key_id == key_id and key.purpose == "vc_signing":
+                return key
+        return None

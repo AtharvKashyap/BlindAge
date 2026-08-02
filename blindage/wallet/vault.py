@@ -10,7 +10,7 @@ from cryptography.hazmat.primitives.ciphers.aead import ChaCha20Poly1305
 from pydantic import BaseModel, ConfigDict, Field
 
 from blindage.crypto import b64u_decode, b64u_encode
-from blindage.schemas import AgeToken
+from blindage.schemas import AgeCredential, AgeToken
 
 
 class StoredToken(BaseModel):
@@ -23,6 +23,9 @@ class VaultData(BaseModel):
     model_config = ConfigDict(extra="forbid")
     enrollments: dict[str, str] = Field(default_factory=dict)
     tokens: list[StoredToken] = Field(default_factory=list)
+    # Reusable BBS age credentials, one per issuer. Additive with a default so
+    # vaults written before Phase 10 (no `credentials` key) still load.
+    credentials: dict[str, AgeCredential] = Field(default_factory=dict)
 
 
 class VaultError(Exception):

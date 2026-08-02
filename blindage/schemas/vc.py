@@ -17,10 +17,22 @@ Single source of truth for two conventions shared by issuer and verifier:
 """
 from pydantic import BaseModel, ConfigDict
 
+from blindage.canonical import canonical_json_bytes
 from blindage.schemas.enums import AgeClaim, AssuranceLevel
 from blindage.schemas.presentation import DomainBinding
 
 VC_HEADER = b"blindage-vc-v1"
+
+
+def vc_presentation_header(domain_binding: DomainBinding) -> bytes:
+    """The BBS ``presentation_header`` octets bound into a ``VcPresentation`` proof.
+
+    Single source of truth so wallet and verifier build identical bytes: the
+    domain binding serialized via ``model_dump(mode="json")`` then encoded with
+    ``canonical_json_bytes`` (sorted keys, tight separators). Any divergence
+    between the two sides would make every proof fail to verify.
+    """
+    return canonical_json_bytes(domain_binding.model_dump(mode="json"))
 
 
 def vc_message_vector(
@@ -44,6 +56,11 @@ class AgeCredential(BaseModel):
     version: str = "1.0"
     issuer_id: str
     issuer_key_id: str
+    # The issuer's BBS public key (public trust data, also in the registry). It
+    # is carried on the credential so the wallet can build a selective-disclosure
+    # proof offline — bbs_proof_gen binds the public key into the proof domain,
+    # and it MUST match the key the verifier looks up in the registry.
+    issuer_public_key: str
     assurance_level: AssuranceLevel
     epoch: str
     claims: list[AgeClaim]

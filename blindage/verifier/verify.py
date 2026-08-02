@@ -3,15 +3,19 @@ import hashlib
 from datetime import datetime, timezone
 
 from blindage.crypto import b64u_decode, verifier_from_issuer_key
+from blindage.crypto.bbs import BBS_ALGORITHM, BbsError, bbs_proof_verify
 from blindage.registry import TrustRegistry
 from blindage.schemas import (
+    VC_HEADER,
     Decision,
     IssuerStatus,
     Presentation,
+    VcPresentation,
     VerifierDecision,
     VerifierPolicy,
     assurance_at_least,
     token_message,
+    vc_presentation_header,
 )
 from blindage.verifier.challenge import ChallengeManager
 from blindage.verifier.replay_cache import ReplayCache
@@ -149,3 +153,132 @@ class BlindAgeVerifier:
             decision=Decision.ALLOW,
             **flags,
         )
+
+
+def verify_vc_presentation(
+    presentation: VcPresentation,
+    registry: TrustRegistry,
+    trusted_issuer: str,
+    audience: str,
+    challenge_store: ChallengeManager,
+) -> VerifierDecision:
+    """Verify a reusable-credential selective-disclosure presentation.
+
+    Mirrors ``BlindAgeVerifier.verify``'s decision/reason structure. The
+    authoritative assurance/epoch come from the registry's ``vc_signing`` key
+    binding (key partitioning), never the token body; the revealed claim is the
+    single message the wallet disclosed. Single-use is enforced by the
+    one-time challenge (there is no per-token nonce), so ``replayed`` stays
+    ``False`` — a burned challenge surfaces as ``challenge_valid=False``.
+    """
+    flags = dict(
+        signature_valid=False,
+        issuer_trusted=False,
+        claim_satisfied=False,
+        assurance_sufficient=False,
+        expired=True,
+        replayed=False,
+        revoked=True,
+        domain_binding_valid=False,
+        challenge_valid=False,
+    )
+    derived_claim = None
+    derived_assurance = None
+
+    def deny() -> VerifierDecision:
+        return VerifierDecision(
+            valid=False,
+            claim=derived_claim,
+            assurance_level=derived_assurance,
+            decision=Decision.DENY,
+            **flags,
+        )
+
+    issuer = registry.get_issuer(presentation.issuer_id)
+    if (
+        issuer is None
+        or issuer.status != IssuerStatus.ACTIVE
+        or presentation.issuer_id != trusted_issuer
+    ):
+        return deny()
+    flags["issuer_trusted"] = True
+    flags["revoked"] = False
+
+    key = registry.get_vc_key(presentation.issuer_id, presentation.issuer_key_id)
+    if key is None:
+        return deny()
+    if key.algorithm != BBS_ALGORITHM:  # algorithm allowlist
+        return deny()
+
+    # A well-formed VC presentation discloses exactly the three fixed metadata
+    # messages plus one claim, at indexes [0, 1, 2, claim_index]. Reject any
+    # other index shape so a malicious wallet cannot play index games.
+    disclosed_indexes = presentation.disclosed_indexes
+    if len(disclosed_indexes) != 4 or disclosed_indexes[:3] != [0, 1, 2]:
+        return deny()
+
+    # Authoritative assurance/epoch come from the registry key binding; the
+    # advisory presentation fields must agree.
+    derived_assurance = key.assurance_level
+    if (presentation.assurance_level, presentation.epoch) != (
+        key.assurance_level,
+        key.epoch,
+    ):
+        return deny()
+    derived_claim = presentation.required_claim
+
+    now = datetime.now(timezone.utc)
+    flags["expired"] = not (key.valid_from <= now <= key.valid_until)
+    if flags["expired"]:
+        return deny()
+
+    binding = presentation.domain_binding
+    flags["domain_binding_valid"] = binding.audience == audience
+    if not flags["domain_binding_valid"]:
+        return deny()
+
+    challenge = challenge_store.consume(binding.challenge_id, binding.challenge)
+    flags["challenge_valid"] = (
+        challenge is not None
+        and challenge.required_claim == presentation.required_claim
+    )
+    if not flags["challenge_valid"]:
+        return deny()
+
+    flags["claim_satisfied"] = challenge.required_claim == presentation.required_claim
+    flags["assurance_sufficient"] = assurance_at_least(
+        derived_assurance, challenge.minimum_assurance_level
+    )
+    if not (flags["claim_satisfied"] and flags["assurance_sufficient"]):
+        return deny()
+
+    # Reconstruct the disclosed messages from the authoritative registry binding
+    # and the revealed claim, in the fixed order the wallet signed/disclosed.
+    disclosed_messages = [
+        presentation.issuer_id.encode("utf-8"),
+        key.assurance_level.value.encode("utf-8"),
+        key.epoch.encode("utf-8"),
+        presentation.required_claim.value.encode("utf-8"),
+    ]
+    ph = vc_presentation_header(binding)
+    try:
+        flags["signature_valid"] = bbs_proof_verify(
+            key.public_key,
+            b64u_decode(presentation.proof),
+            VC_HEADER,
+            ph,
+            disclosed_messages,
+            disclosed_indexes,
+        )
+    except (BbsError, binascii.Error, ValueError):
+        flags["signature_valid"] = False
+    if not flags["signature_valid"]:
+        return deny()
+
+    return VerifierDecision(
+        valid=True,
+        claim=derived_claim,
+        assurance_level=derived_assurance,
+        decision=Decision.ALLOW,
+        **flags,
+    )

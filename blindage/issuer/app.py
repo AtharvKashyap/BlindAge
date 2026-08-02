@@ -172,6 +172,16 @@ def create_app(
         if signer is None:
             raise HTTPException(409, detail="no vc signing key configured")
         key_id, private_key_b64, assurance_level, epoch = signer
+        public_key = next(
+            (
+                public_material(e)[1]
+                for e in key_store.vc_entries()
+                if e["key_id"] == key_id
+            ),
+            None,
+        )
+        if public_key is None:  # pragma: no cover - signer guarantees a match
+            raise HTTPException(409, detail="vc signing key has no public material")
         # BBS is NOT blind: the issuer signs the full, ordered message vector.
         # Unlinkability is delivered by selective-disclosure proofs at
         # presentation time, not here.
@@ -180,6 +190,7 @@ def create_app(
         return AgeCredential(
             issuer_id=issuer_id,
             issuer_key_id=key_id,
+            issuer_public_key=public_key,
             assurance_level=AssuranceLevel(assurance_level),
             epoch=epoch,
             claims=[AgeClaim(c) for c in claims],

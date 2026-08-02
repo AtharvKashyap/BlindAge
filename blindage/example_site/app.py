@@ -6,9 +6,15 @@ from blindage.schemas import (
     AgeClaim,
     AssuranceLevel,
     Presentation,
+    VcPresentation,
     VerifierPolicy,
 )
-from blindage.verifier import BlindAgeVerifier, ChallengeManager, ReplayCache
+from blindage.verifier import (
+    BlindAgeVerifier,
+    ChallengeManager,
+    ReplayCache,
+    verify_vc_presentation,
+)
 
 _LANDING_HTML = """<!doctype html>
 <html><head><meta charset="utf-8"><title>BlindAge Demo Site</title>
@@ -76,6 +82,62 @@ getChallenge();
 </body></html>"""
 
 
+_PROTECTED_VC_HTML = """<!doctype html>
+<html><head><meta charset="utf-8"><title>Age-gated area (VC mode) — BlindAge</title>
+<style>body{font-family:system-ui;max-width:40rem;margin:3rem auto;padding:0 1rem;line-height:1.5}
+#status{padding:1rem;border-radius:.4rem;background:#edf2f7}
+#content{display:none;padding:1rem;border-radius:.4rem;background:#c6f6d5}
+.badge{display:inline-block;padding:.15rem .5rem;border-radius:.3rem;background:#e9d8fd;color:#553c9a;font-size:.8rem}
+textarea{width:100%;height:6rem}</style>
+</head><body>
+<h1>Age-restricted area <span class="badge">reusable-credential (VC) mode</span></h1>
+<p>This gate accepts a <strong>reusable BBS age credential</strong>: the wallet holds
+one credential and presents a fresh, unlinkable selective-disclosure proof each time.
+The site still learns only that you satisfy <strong>AGE_OVER_18</strong> — nothing else,
+and it cannot link two presentations to the same credential.</p>
+<div id="status">Requesting age proof… waiting for the BlindAge wallet.</div>
+<div id="content"><h2>🔓 Access granted</h2><p>You proved you are old enough with a
+reusable credential — and this site learned nothing else, nor can it link this visit
+to any other.</p></div>
+<details><summary>No extension? Paste a VC presentation manually</summary>
+<p>Run <code>blindage vc-prove</code> against the challenge below, then paste the presentation.</p>
+<pre id="challenge"></pre>
+<textarea id="manual"></textarea><button id="submit">Submit presentation</button></details>
+<script>
+let currentChallenge = null;
+async function getChallenge() {
+  const r = await fetch("/api/challenge", {method: "POST"});
+  currentChallenge = await r.json();
+  document.getElementById("challenge").textContent = JSON.stringify(currentChallenge, null, 2);
+  window.postMessage({source: "blindage-page", kind: "request", challenge: currentChallenge}, "*");
+}
+async function redeem(presentation) {
+  const r = await fetch("/api/redeem-vc", {
+    method: "POST", headers: {"Content-Type": "application/json"},
+    body: JSON.stringify(presentation),
+  });
+  const body = await r.json();
+  if (r.ok && body.decision === "ALLOW") {
+    document.getElementById("status").style.display = "none";
+    document.getElementById("content").style.display = "block";
+  } else {
+    const failed = Object.entries(body.detail || {})
+      .filter(([k, v]) => v === false && k !== "valid")
+      .map(([k]) => k);
+    const why = failed.length ? failed.join(", ") : body.decision;
+    document.getElementById("status").textContent =
+      "Access denied (failed: " + why + "). Fetching a fresh challenge — present again.";
+    getChallenge();
+  }
+}
+document.getElementById("submit").addEventListener("click", () => {
+  redeem(JSON.parse(document.getElementById("manual").value));
+});
+getChallenge();
+</script>
+</body></html>"""
+
+
 def create_site(
     registry: TrustRegistry,
     trusted_issuer: str,
@@ -116,6 +178,28 @@ def create_site(
     @app.post("/api/redeem")
     def redeem(presentation: Presentation) -> JSONResponse:
         decision = verifier.verify(presentation)
+        status = 200 if decision.valid else 403
+        return JSONResponse(
+            status_code=status,
+            content={
+                "decision": decision.decision.value,
+                "detail": decision.model_dump(mode="json"),
+            },
+        )
+
+    @app.get("/protected-vc", response_class=HTMLResponse)
+    def protected_vc() -> str:
+        return _PROTECTED_VC_HTML
+
+    @app.post("/api/redeem-vc")
+    def redeem_vc(presentation: VcPresentation) -> JSONResponse:
+        decision = verify_vc_presentation(
+            presentation,
+            registry,
+            trusted_issuer=trusted_issuer,
+            audience=audience,
+            challenge_store=challenges,
+        )
         status = 200 if decision.valid else 403
         return JSONResponse(
             status_code=status,

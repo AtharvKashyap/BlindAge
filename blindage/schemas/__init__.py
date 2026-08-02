@@ -26,6 +26,7 @@ from blindage.schemas.vc import (
     CredentialIssueRequest,
     VcPresentation,
     vc_message_vector,
+    vc_presentation_header,
 )
 
 __all__ = [
@@ -34,6 +35,7 @@ __all__ = [
     "CredentialIssueRequest",
     "VcPresentation",
     "vc_message_vector",
+    "vc_presentation_header",
     "CLAIM_MIN_AGE",
     "AgeClaim",
     "AgeToken",
