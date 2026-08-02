@@ -7,8 +7,15 @@ once and issues unlinkable, single-use anonymous age tokens. Websites learn
 only whether the user satisfies a threshold (e.g. `AGE_OVER_18`) — never
 identity. The issuer never learns where tokens are used.
 
-> **Status: Phase 9 (blockchain registry anchor slice) complete; the
-> everyday-user track (through Phase 8) is complete.** The wallet blinds token
+> **Status: Phase 10 (selective-disclosure verifiable credentials) complete;
+> Phase 9 (blockchain registry anchor slice) and the everyday-user track
+> (through Phase 8) are complete.** Phase 10 adds a second, reusable-credential
+> mode (BBS selective disclosure) alongside the blind-token path — see
+> [VC mode](#selective-disclosure-vc-mode-phase-10) below. **VC issuance is NOT
+> blind:** the issuer sees the claims it signs; unlinkability comes from
+> randomized presentation-time proofs, not from issuance. The blind-token path
+> below stays blind even at issuance. The two modes are compared honestly in
+> [`docs/vc-vs-tokens.md`](docs/vc-vs-tokens.md). The wallet blinds token
 > messages (RFC 9474 RSABSSA); the issuer signs values it cannot read;
 > websites verify standard RSA-PSS signatures. The issuer can no longer link
 > issuance to redemption — the property this project exists for. Conformance
@@ -193,10 +200,59 @@ brew install foundry            # forge + anvil + cast
 `scripts/test_contracts.sh` is also wired into `scripts/ci.sh`; when Foundry is
 absent it prints a notice and exits 0, so core CI stays green on any machine.
 
+## Selective-disclosure VC mode (Phase 10)
+
+Alongside single-use blind tokens, BlindAge offers a **reusable** age credential
+using BBS selective-disclosure signatures. The issuer signs one multi-claim
+credential once; the wallet then produces unlimited fresh, unlinkable
+presentations, each revealing only the one threshold a site asks for.
+
+> **VC issuance is NOT blind.** Unlike the token path (where the issuer signs a
+> blinded nonce it cannot read), the BBS issuer signs a **cleartext** message
+> vector and sees every claim it grants (`[issuer_id, assurance, epoch, *claims]`).
+> Privacy comes from **randomized selective-disclosure proofs at presentation
+> time** — two presentations of the same credential share no correlatable bytes,
+> and hidden claims and the credential signature never appear in a presentation
+> (CI-blocking: `tests/privacy/test_vc_unlinkability.py`). This is a deliberate
+> trade-off: reusability in exchange for non-blind issuance. The full honest
+> comparison — issuance blindness, reuse, revocation, and what a colluding
+> issuer + site learns in each mode — is in
+> [`docs/vc-vs-tokens.md`](docs/vc-vs-tokens.md).
+
+The BBS crypto (`blindage/crypto/bbs.py`) is implemented from
+`draft-irtf-cfrg-bbs-signatures` on `py_ecc`'s reviewed BLS12-381 primitives and
+gated byte-for-byte by the official CFRG test vectors (25 fixtures). It is **not
+constant-time** and is dev-only; production is gated on an audited native BBS
+implementation, exactly like the pure-Python RSABSSA (see `docs/decisions.md`).
+
+Run it end-to-end. The issuer issues credentials under `vc_signing` keys, and the
+example site exposes `/protected-vc` plus `/api/redeem-vc`:
+
+```bash
+# 1. Fetch a reusable credential for an existing enrollment (see enroll above):
+.venv/bin/python -m blindage.wallet.cli vc-get \
+    --issuer http://localhost:8400 --vault /tmp/w.blindage
+
+# 2. Get a challenge from the site, then build a domain-bound presentation.
+#    The credential is reusable — repeat this step per site visit with a fresh
+#    challenge and each presentation is unlinkable to the last:
+.venv/bin/python -m blindage.wallet.cli vc-prove \
+    --issuer http://localhost:8400 \
+    --challenge-file /tmp/challenge.json --out /tmp/vc-presentation.json \
+    --vault /tmp/w.blindage
+```
+
+The verifier SDK's `verify_vc_presentation` checks the BBS proof against the
+issuer public key it looks up **in the registry** (never a value carried by the
+presentation, never a live issuer callback), reconstructs the disclosed messages,
+and enforces the domain binding + one-time challenge. Open `/protected-vc` on the
+example site for the in-browser version of the same flow.
+
 ## Documents
 
 - `docs/roadmap.md` — phase status and target project tree
 - `docs/decisions.md` — crypto/architecture decision log
+- `docs/vc-vs-tokens.md` — honest comparison of the blind-token and VC modes
 
 ## Known limitations (pre-deployment)
 

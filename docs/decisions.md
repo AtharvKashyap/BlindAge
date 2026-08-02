@@ -64,3 +64,47 @@ caveat). Acceptable for the dev-stage tool.
 
 **Production path (pre-deployment gate):** replace the pure-JS RSABSSA with a WASM build of
 an audited native implementation, mirroring the Python PyO3/native-wrap gate.
+
+## 2026-08-02 — BBS selective-disclosure VCs: from CFRG draft on `py_ecc`
+
+**Decision:** Implement BBS signatures (KeyGen / Sign / Verify / ProofGen /
+ProofVerify, ciphersuite `BBS_BLS12381G1_XMD:SHA-256_SSWU_RO_`) from
+`draft-irtf-cfrg-bbs-signatures` directly, on top of the `py_ecc` package, in
+`blindage/crypto/bbs.py` — rather than adopting a third-party BBS library.
+
+**Why:** Research (2026-08-02) found no maintained, reviewed BBS package on PyPI
+implementing the current CFRG draft ciphersuite. `py_ecc` (Ethereum Foundation)
+is a reviewed, widely-used implementation of the BLS12-381 curve, pairing,
+hash-to-curve, and point (de)compression — exactly the primitive layer BBS
+needs. Building only the BBS *protocol* layer (generator derivation,
+hash-to-scalar, domain calculation, CoreSign/CoreVerify, and the
+proof-generation/verification glue) on top of it keeps every elliptic-curve and
+pairing operation in reviewed code. This mirrors the RSABSSA from-spec precedent
+(2026-07-22): don't hand-roll a primitive; hand-write only the protocol glue and
+gate it byte-for-byte against official vectors.
+
+**How the "never hand-roll a primitive" rule is honored:** curve arithmetic,
+pairings, hash-to-curve, and (de)compression are all `py_ecc`. What is
+hand-written is BBS protocol-level, and it is gated by the official CFRG test
+vectors (`tests/vectors/bbs_bls12381_sha256.json`): **25 official fixtures — 10
+Sign/Verify + 15 ProofGen/ProofVerify — all passing** (`tests/unit/test_bbs_sign.py`,
+`test_bbs_proof.py`, `test_bbs_vector_file.py`). If a vector fails, the
+implementation is wrong, never the vector.
+
+**Not blind by design:** BBS Sign is *not* a blind signature. The issuer sees the
+full message vector it signs (issuer_id, assurance, epoch, and every eligible
+claim). Unlinkability comes from randomized selective-disclosure *proofs* at
+presentation time, not from issuance. This is a deliberate, documented trade-off
+against the blind-token path — see `docs/vc-vs-tokens.md`. It does not weaken the
+token path; VC mode is an additional, reusable-credential option.
+
+**Known limitation:** this pure-Python BBS is **not constant-time** — `py_ecc`
+scalar multiplication and this module's modular arithmetic both leak timing.
+Suitable for development, testing, and protocol validation only.
+
+**Production path (pre-deployment gate):** replace the pure-Python BBS primitives
+with an audited, constant-time native BBS implementation (e.g. a Rust crate wrapped
+via PyO3/maturin, or a WASM build) behind the same
+`bbs_sign/bbs_verify/bbs_proof_gen/bbs_proof_verify` interface — the same
+production gate that applies to the pure-Python RSABSSA. Tracked in
+docs/roadmap.md.

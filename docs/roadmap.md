@@ -86,10 +86,26 @@ then one-click anonymous presentations everywhere.
    proposer ceremony, and an extension→RPC path. Production gate: `AnchorClient` trusts
    whatever RPC endpoint it is given — add chain-id and contract-code verification before
    any non-dev deployment.
-- **Selective-disclosure verifiable credentials** — reusable VC mode, randomized
-   presentations, no stable credential IDs.
-- **Hybrid post-quantum signatures** — ML-DSA + Ed25519 on the trust layer, downgrade
-   protection.
+10. **Selective-disclosure verifiable credentials** — ✅ complete (a reusable VC mode
+   using BBS signatures alongside the blind-token path. BBS KeyGen/Sign/Verify/ProofGen/
+   ProofVerify [ciphersuite `BBS_BLS12381G1_XMD:SHA-256_SSWU_RO_`] implemented from
+   `draft-irtf-cfrg-bbs-signatures` on `py_ecc`'s reviewed BLS12-381 primitives, gated
+   byte-for-byte by 25 official CFRG vectors [10 Sign/Verify + 15 ProofGen/ProofVerify].
+   The issuer signs ONE multi-claim `AgeCredential` under a `vc_signing` key
+   [`/v1/credentials/issue`]; the wallet [`vc-get`/`vc-prove`] produces unlimited fresh,
+   randomized, domain-bound `VcPresentation`s each revealing only the requested threshold;
+   the verifier [`verify_vc_presentation`] checks the proof against the registry-looked-up
+   public key only [no value from the presentation, no live issuer callback] and enforces
+   the one-time challenge; the example site adds `/protected-vc` + `/api/redeem-vc`.
+   **Issuance is NOT blind** — the issuer sees the claims it signs; unlinkability is
+   presentation-time only [randomized proofs sharing no correlatable bytes; hidden claims
+   and the credential signature never appear], pinned CI-blocking by
+   `tests/privacy/test_vc_unlinkability.py` and compared honestly in `docs/vc-vs-tokens.md`.
+   Pure-Python BBS is **not constant-time** — dev-only; production gate is an audited native
+   BBS impl [PyO3/WASM] behind the same interface, mirroring the RSABSSA gate. Decision log:
+   `docs/decisions.md` [2026-08-02]).
+11. **Hybrid post-quantum signatures** — ML-DSA + Ed25519 on the trust layer, downgrade
+   protection. **(next)**
 - **Research** — ZK age-comparison proofs; PQ anonymous credentials.
 
 ## Target directory tree (directories are created per phase [MOD-5])
