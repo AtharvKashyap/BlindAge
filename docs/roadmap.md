@@ -170,8 +170,8 @@ docs/                        # specs, plans, this roadmap; protocol.md + threat-
                              # + privacy-model.md arrive with Phases 2-3
 wallet/extension/            # Phase 4 (TypeScript + Vite, Manifest V3)
 registry/offchain/           # registry-sourced trust phase (registry.json + sig, mirror, validator)
-registry/contracts/          # blockchain-registry phase (IssuerRegistry, RevocationRoots, Transparency)
-transparency/                # blockchain-registry phase (log server + auditor)
+registry/contracts/          # blockchain-registry phase (RegistryAnchor; RevocationRoots dropped — see decisions.md)
+blindage/transparency/       # transparency phase (log server + auditor) — ✅ built
 verifier/sdk/node/           # registry-sourced trust phase (Node verifier SDK)
 wallet/mobile/               # later
 physical_token_demo/         # optional low-assurance demo module (clearly labeled)
@@ -201,6 +201,7 @@ physical_token_demo/         # optional low-assurance demo module (clearly label
   stale-but-signed registry) is now mitigated **at the root** by the Phase 9 on-chain
   anchor — but only for parties that check it (mirror operators, verifier SDK opt-in). The
   extension still trusts its pasted root key (extension→RPC is deferred), and the anchor is
-  local-anvil-only with no testnet/mainnet deployment. Remaining trust-track deferrals: a
-  transparency-log server + auditor (consuming the `AnchorUpdated` events), a
-  `RevocationRoots` contract, and a multi-sig proposer ceremony.
+  local-anvil-only with no testnet/mainnet deployment. The trust-track deferrals were
+  closed in Phase 12: transparency-log server + auditor ✅ built, multi-sig proposer
+  ceremony ✅ documented + proven, `RevocationRoots` consciously dropped (decisions.md).
+  Extension→RPC remains the one open deferral.
