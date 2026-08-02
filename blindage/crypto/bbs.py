@@ -25,6 +25,7 @@ SECURITY / SCOPE NOTES:
 
 from __future__ import annotations
 
+import secrets
 from hashlib import sha256
 
 from py_ecc.optimized_bls12_381 import (
@@ -191,8 +192,6 @@ def _decode_scalar_secret(secret_b64u: str) -> int:
 # --------------------------------------------------------------------------- #
 def generate_bbs_keypair() -> tuple[str, str]:
     """Return (secret_b64u, public_b64u): a random scalar SK and PK = SK * P2."""
-    import secrets
-
     sk = 1 + secrets.randbelow(_R - 1)
     pk_point = multiply(G2, sk)
     secret_b64u = b64u_encode(_i2osp(sk, _OCTET_SCALAR_LENGTH))
@@ -265,3 +264,251 @@ def bbs_verify(
     lhs = pairing(add(w, multiply(G2, e)), a_point)
     rhs = pairing(neg(G2), b)
     return lhs * rhs == FQ12.one()
+
+
+# --------------------------------------------------------------------------- #
+# Selective-disclosure proofs (draft-irtf-cfrg-bbs-signatures CoreProofGen /
+# CoreProofVerify). A BBS proof is a zero-knowledge proof-of-knowledge of a
+# signature that reveals only a chosen subset of the signed messages and binds
+# to a fresh, caller-supplied `presentation_header`. Proofs are randomized:
+# every call to `bbs_proof_gen` draws fresh blinding scalars, so two proofs of
+# the same signature are unlinkable. Correctness is gated by the official CFRG
+# proof vectors (tests/unit/test_bbs_proof.py).
+# --------------------------------------------------------------------------- #
+def _octets_to_signature(signature: bytes):
+    """Parse 80 octets (A || e) to a (point, scalar) pair. Malformed -> BbsError."""
+    if len(signature) != _OCTET_POINT_LENGTH + _OCTET_SCALAR_LENGTH:
+        raise BbsError("signature must be 80 octets")
+    a_point = _octets_to_point_e1(signature[:_OCTET_POINT_LENGTH])
+    if is_inf(a_point):
+        raise BbsError("signature point A is the identity")
+    e = _os2ip(signature[_OCTET_POINT_LENGTH:])
+    if e == 0 or e >= _R:
+        raise BbsError("signature scalar e is out of range")
+    return a_point, e
+
+
+def _is_valid_index(value) -> bool:
+    return isinstance(value, int) and not isinstance(value, bool)
+
+
+def _octets_to_proof(proof: bytes):
+    """Parse a BBS proof to (Abar, Bbar, D, e^, r1^, r3^, commitments, c).
+
+    Any structural problem (short length, misaligned scalar section, bad or
+    identity point, out-of-range scalar) raises BbsError; the verify entry point
+    maps that to a False result.
+    """
+    floor = 3 * _OCTET_POINT_LENGTH + 4 * _OCTET_SCALAR_LENGTH
+    if len(proof) < floor:
+        raise BbsError("proof is shorter than the minimum length")
+    if (len(proof) - 3 * _OCTET_POINT_LENGTH) % _OCTET_SCALAR_LENGTH != 0:
+        raise BbsError("proof scalar section is misaligned")
+
+    index = 0
+    points = []
+    for _ in range(3):
+        point = _octets_to_point_e1(proof[index : index + _OCTET_POINT_LENGTH])
+        if is_inf(point):
+            raise BbsError("proof point is the identity")
+        points.append(point)
+        index += _OCTET_POINT_LENGTH
+
+    scalars = []
+    while index < len(proof):
+        s = _os2ip(proof[index : index + _OCTET_SCALAR_LENGTH])
+        if s == 0 or s >= _R:
+            raise BbsError("proof scalar is out of range")
+        scalars.append(s)
+        index += _OCTET_SCALAR_LENGTH
+
+    # scalars = (e^, r1^, r3^, m^_j1, ..., m^_jU, c); at least 4 by the floor check.
+    abar, bbar, d = points
+    e_hat, r1_hat, r3_hat = scalars[0], scalars[1], scalars[2]
+    commitments = scalars[3:-1]
+    challenge = scalars[-1]
+    return abar, bbar, d, e_hat, r1_hat, r3_hat, commitments, challenge
+
+
+def _proof_to_octets(
+    abar, bbar, d, e_hat: int, r1_hat: int, r3_hat: int, commitments, challenge: int
+) -> bytes:
+    """serialize((Abar, Bbar, D, e^, r1^, r3^, m^_1, ..., m^_U, c))."""
+    out = (
+        _point_to_octets_e1(abar)
+        + _point_to_octets_e1(bbar)
+        + _point_to_octets_e1(d)
+        + _i2osp(e_hat, _OCTET_SCALAR_LENGTH)
+        + _i2osp(r1_hat, _OCTET_SCALAR_LENGTH)
+        + _i2osp(r3_hat, _OCTET_SCALAR_LENGTH)
+    )
+    for m in commitments:
+        out += _i2osp(m, _OCTET_SCALAR_LENGTH)
+    out += _i2osp(challenge, _OCTET_SCALAR_LENGTH)
+    return out
+
+
+def _proof_challenge_calculate(
+    abar, bbar, d, t1, t2, domain: int, disclosed_scalars, disclosed_indexes, ph: bytes
+) -> int:
+    """ProofChallengeCalculate: hash_to_scalar over the Fiat-Shamir transcript."""
+    c_octs = _i2osp(len(disclosed_indexes), 8)
+    for i, m in zip(disclosed_indexes, disclosed_scalars):
+        c_octs += _i2osp(i, 8) + _i2osp(m, _OCTET_SCALAR_LENGTH)
+    c_octs += (
+        _point_to_octets_e1(abar)
+        + _point_to_octets_e1(bbar)
+        + _point_to_octets_e1(d)
+        + _point_to_octets_e1(t1)
+        + _point_to_octets_e1(t2)
+        + _i2osp(domain, _OCTET_SCALAR_LENGTH)
+    )
+    c_octs += _i2osp(len(ph), 8) + ph
+    return _hash_to_scalar(c_octs, _H2S_DST)
+
+
+def bbs_proof_gen(
+    public_b64u: str,
+    signature: bytes,
+    header: bytes,
+    presentation_header: bytes,
+    messages: list[bytes],
+    disclosed_indexes: list[int],
+) -> bytes:
+    """Create a selective-disclosure BBS proof revealing only `disclosed_indexes`.
+
+    `disclosed_indexes` MUST be strictly increasing and within [0, len(messages)-1];
+    any structural problem raises BbsError. The proof draws fresh randomness on
+    every call, so it is not deterministic (unlike `bbs_sign`).
+    """
+    try:
+        pk_octets = b64u_decode(public_b64u)
+    except Exception as exc:  # noqa: BLE001
+        raise BbsError("public key is not valid base64url") from exc
+    _octets_to_pubkey(pk_octets)  # structural validation of the key
+
+    a_point, e = _octets_to_signature(signature)
+
+    length = len(messages)
+    r = len(disclosed_indexes)
+    if r > length:
+        raise BbsError("more disclosed indexes than messages")
+    prev = -1
+    for i in disclosed_indexes:
+        if not _is_valid_index(i):
+            raise BbsError("disclosed index is not an integer")
+        if i < 0 or i > length - 1:
+            raise BbsError("disclosed index out of range")
+        if i <= prev:
+            raise BbsError("disclosed indexes must be strictly increasing")
+        prev = i
+
+    disclosed_set = set(disclosed_indexes)
+    undisclosed_indexes = [i for i in range(length) if i not in disclosed_set]
+    u = len(undisclosed_indexes)
+
+    msg_scalars = _messages_to_scalars(messages)
+    generators = _create_generators(length + 1)
+    q_1, h_points = generators[0], generators[1:]
+    domain = _calculate_domain(pk_octets, q_1, h_points, header)
+
+    # random_scalars = (r1, r2, e~, r1~, r3~, m~_j1, ..., m~_jU)
+    random_scalars = [1 + secrets.randbelow(_R - 1) for _ in range(5 + u)]
+    r1, r2, e_tilde, r1_tilde, r3_tilde = random_scalars[:5]
+    m_tildes = random_scalars[5:]
+
+    # ProofInit.
+    b = _b_value(domain, q_1, h_points, msg_scalars)
+    d = multiply(b, r2)
+    abar = multiply(a_point, (r1 * r2) % _R)
+    bbar = add(multiply(d, r1), neg(multiply(abar, e)))
+    t1 = add(multiply(abar, e_tilde), multiply(d, r1_tilde))
+    t2 = multiply(d, r3_tilde)
+    for m_tilde, j in zip(m_tildes, undisclosed_indexes):
+        t2 = add(t2, multiply(h_points[j], m_tilde))
+
+    disclosed_scalars = [msg_scalars[i] for i in disclosed_indexes]
+    challenge = _proof_challenge_calculate(
+        abar, bbar, d, t1, t2, domain, disclosed_scalars, disclosed_indexes,
+        presentation_header,
+    )
+
+    # ProofFinalize.
+    r3 = pow(r2, -1, _R)
+    e_hat = (e_tilde + e * challenge) % _R
+    r1_hat = (r1_tilde - r1 * challenge) % _R
+    r3_hat = (r3_tilde - r3 * challenge) % _R
+    commitments = [
+        (m_tilde + msg_scalars[j] * challenge) % _R
+        for m_tilde, j in zip(m_tildes, undisclosed_indexes)
+    ]
+    return _proof_to_octets(abar, bbar, d, e_hat, r1_hat, r3_hat, commitments, challenge)
+
+
+def bbs_proof_verify(
+    public_b64u: str,
+    proof: bytes,
+    header: bytes,
+    presentation_header: bytes,
+    disclosed_messages: list[bytes],
+    disclosed_indexes: list[int],
+) -> bool:
+    """Return True iff `proof` is a valid selective-disclosure proof.
+
+    Any proof-level problem (bad encoding, out-of-range or non-ascending indexes,
+    disclosed-count mismatch, challenge mismatch, failed pairing) yields False.
+    Only a malformed public key raises BbsError, matching `bbs_verify`.
+    """
+    try:
+        pk_octets = b64u_decode(public_b64u)
+    except Exception as exc:  # noqa: BLE001
+        raise BbsError("public key is not valid base64url") from exc
+    w = _octets_to_pubkey(pk_octets)  # malformed key -> BbsError, as with bbs_verify
+
+    try:
+        abar, bbar, d, e_hat, r1_hat, r3_hat, commitments, challenge = _octets_to_proof(
+            proof
+        )
+        u = len(commitments)
+        r = len(disclosed_indexes)
+        length = r + u
+
+        for i in disclosed_indexes:
+            if not _is_valid_index(i) or i < 0 or i > length - 1:
+                return False
+        if len(disclosed_messages) != r:
+            return False
+
+        disclosed_set = set(disclosed_indexes)
+        undisclosed_indexes = [i for i in range(length) if i not in disclosed_set]
+
+        disclosed_scalars = _messages_to_scalars(disclosed_messages)
+        generators = _create_generators(length + 1)
+        q_1, h_points = generators[0], generators[1:]
+        domain = _calculate_domain(pk_octets, q_1, h_points, header)
+
+        # ProofVerifyInit.
+        t1 = add(
+            add(multiply(bbar, challenge), multiply(abar, e_hat)),
+            multiply(d, r1_hat),
+        )
+        bv = add(_P1, multiply(q_1, domain))
+        for i, m in zip(disclosed_indexes, disclosed_scalars):
+            bv = add(bv, multiply(h_points[i], m))
+        t2 = add(multiply(bv, challenge), multiply(d, r3_hat))
+        for j, m_hat in zip(undisclosed_indexes, commitments):
+            t2 = add(t2, multiply(h_points[j], m_hat))
+
+        expected = _proof_challenge_calculate(
+            abar, bbar, d, t1, t2, domain, disclosed_scalars, disclosed_indexes,
+            presentation_header,
+        )
+        if expected != challenge:
+            return False
+
+        # Pairing check: e(Abar, W) * e(Bbar, -P2) == Identity_GT.
+        lhs = pairing(w, abar)
+        rhs = pairing(neg(G2), bbar)
+        return lhs * rhs == FQ12.one()
+    except BbsError:
+        return False

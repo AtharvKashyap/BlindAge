@@ -34,7 +34,15 @@ def test_proof_vectors_decode():
             assert len(bytes.fromhex(c["public_key"])) == 96
         for m in c["messages"]:
             bytes.fromhex(m)
-        # disclosed_indexes are integers; range validity is a Task 3 concern
-        # (the fixtures deliberately include invalid-index cases).
+        # disclosed_indexes are always integers.
         for idx in c["disclosed_indexes"]:
-            assert isinstance(idx, int)
+            assert isinstance(idx, int) and not isinstance(idx, bool)
+        # For cases the fixtures mark valid, the indexes must be a strictly
+        # increasing, in-range selection of the message vector. Invalid cases
+        # (e.g. disclosed_indexes [4, 2, 4, 6]) deliberately violate this, so
+        # the range assertions apply only to the valid ones.
+        if c["valid"]:
+            n = len(c["messages"])
+            idxs = c["disclosed_indexes"]
+            assert all(0 <= i < n for i in idxs)
+            assert idxs == sorted(set(idxs))

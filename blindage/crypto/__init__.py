@@ -18,6 +18,8 @@ from blindage.crypto.factory import (
 from blindage.crypto.bbs import (
     BBS_ALGORITHM,
     BbsError,
+    bbs_proof_gen,
+    bbs_proof_verify,
     bbs_sign,
     bbs_verify,
     generate_bbs_keypair,
@@ -56,6 +58,8 @@ __all__ = [
     "generate_blind_keypair",
     "BBS_ALGORITHM",
     "BbsError",
+    "bbs_proof_gen",
+    "bbs_proof_verify",
     "bbs_sign",
     "bbs_verify",
     "generate_bbs_keypair",
