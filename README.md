@@ -7,9 +7,18 @@ once and issues unlinkable, single-use anonymous age tokens. Websites learn
 only whether the user satisfies a threshold (e.g. `AGE_OVER_18`) — never
 identity. The issuer never learns where tokens are used.
 
-> **Status: Phase 11 (hybrid post-quantum trust layer) complete; Phase 10
-> (selective-disclosure verifiable credentials), Phase 9 (blockchain registry
-> anchor slice), and the everyday-user track (through Phase 8) are complete.**
+> **Status: Phase 12 (transparency + governance) complete; Phase 11 (hybrid
+> post-quantum trust layer), Phase 10 (selective-disclosure verifiable
+> credentials), Phase 9 (blockchain registry anchor slice), and the
+> everyday-user track (through Phase 8) are complete.** Phase 12 makes the
+> on-chain trust root **externally verifiable**: a transparency log server
+> serves the anchor's ordered update history and an independent auditor
+> cross-checks mirror ↔ chain, both fail-closed — see
+> [transparency & governance](#transparency--governance-phase-12) below. The
+> chain *is* the log (no second source of truth, no server key to compromise);
+> a separate `RevocationRoots` contract was consciously dropped (registry
+> status + epoch expiry cover revocation at this scale — see
+> [`docs/decisions.md`](docs/decisions.md)).
 > Phase 11 adds a second, **post-quantum** signature (ML-DSA-65) over the trust
 > registry alongside the classical Ed25519 root signature, with downgrade-
 > protected policy modes — see [hybrid PQC](#hybrid-post-quantum-trust-layer-phase-11)
@@ -189,9 +198,10 @@ its manually pasted dev root key.
 Honest framing: this is **local anvil only**. There is **no testnet or mainnet
 deployment**; the demo uses a **short dev timelock delay** (1 s, versus days in
 production) and a hardcoded anvil dev key. It is a working slice, not a shippable
-trust root. Deferred to later trust-track work: a transparency-log server +
-auditor (the `AnchorUpdated` events are its data source), a `RevocationRoots`
-contract, a multi-sig proposer ceremony, and an extension→RPC path.
+trust root. The transparency-log server + auditor and the governance
+separation-of-duties model that this slice deferred have since landed in
+[Phase 12](#transparency--governance-phase-12); an extension→RPC path (which
+would also carry the pinned PQ root into the extension) remains open.
 
 Requires Foundry and `web3.py` (`pip install -e ".[dev]"` includes web3;
 contract deps under `registry/contracts/{lib,out,cache}` are gitignored and
@@ -346,11 +356,86 @@ Because only the registry trust layer is hybrid, **BlindAge is not a "quantum-sa
 system"** — it is a system whose root of trust is hybrid-signed. See
 `docs/decisions.md` (2026-08-02) for the full rationale.
 
+## Transparency & governance (Phase 12)
+
+The on-chain anchor (Phase 9) fixes trust *at the root* — but a root that only its
+operators can inspect is asking to be trusted, not proving it deserves to be.
+Phase 12 makes the anchor **externally verifiable** and documents the governance
+that authorizes changes to it.
+
+**The chain is the log.** There is no separate append-only log with its own key
+and storage — the `RegistryAnchor`'s `AnchorUpdated` events already give the two
+things a transparency log must provide: **ordering** (block order) and
+**immutability** (the on-chain monotonic-`version` / strictly-increasing-
+`generated_at` checks), over **public trust data only** (constitution rule 3 — a
+keccak hash + `generated_at` + version, never identity). So the log server holds
+**no state and no key**; if it dies, the same history is reconstructable straight
+from the chain. Building a second source of truth would only add a key to
+compromise and a log that can disagree with the chain. A `RevocationRoots`
+contract was **consciously dropped** for the same YAGNI reason — registry
+`status` + epoch expiry already express revocation at this scale; see
+[`docs/decisions.md`](docs/decisions.md) (2026-08-02) for the revisit trigger
+(per-token / per-batch revocation).
+
+**Transparency log server** — a stateless, cached view over the events
+(`blindage/transparency/app.py`). `GET /log` returns the ordered history; on any
+RPC trouble it **fails closed with 503** rather than serving a partial or stale
+answer as if complete:
+
+```bash
+# run_chain_demo.sh prints the deployed anchor address; then:
+BLINDAGE_ANCHOR=<anchor> BLINDAGE_RPC=http://127.0.0.1:8545 \
+  .venv/bin/uvicorn --port 8800 --factory demo_support:log_app
+curl -s http://127.0.0.1:8800/log | python -m json.tool
+```
+
+**Independent auditor** — a CLI that re-derives the history from the chain and
+cross-checks it against the registry mirror
+(`blindage/transparency/auditor.py`). It verifies four things: the on-chain head
+is reachable, the event history has no version/`generated_at` rollback, the head
+matches the last logged event, and the mirror's served `registry.json` hashes to
+the head anchor. Any unreachable dependency or inconsistency is a **FAIL with a
+distinct problem string** (an auditor that skips is an auditor that lies), and it
+carries **cron/CI exit codes** — `0` on PASS, non-zero on FAIL:
+
+```bash
+.venv/bin/python -m blindage.transparency.auditor \
+  --mirror http://127.0.0.1:8080 --rpc http://127.0.0.1:8545 --contract <anchor>
+# PASS (head version N)   -> exit 0
+# FAIL: - <distinct reason>  -> exit 1
+```
+
+**Governance.** [`docs/governance-ceremony.md`](docs/governance-ceremony.md)
+documents how registry-anchor updates are authorized, delayed, executed, and
+externally verified: OpenZeppelin `TimelockController` roles (proposer / executor
+/ admin) enforce **separation of duties** — a proposer can queue but not land, an
+executor can land only a matured operation but queue nothing — proven on-chain in
+`tests/chain/test_anchor_integration.py`. Governance touches only *which public
+registry the world treats as canonical*; it never touches double anonymity, and
+the worst a fully-compromised governance set can do is publish a bad *public*
+registry — exactly what the transparency log and auditor exist to catch.
+
+**Honest framing.** This is **dev-scale**: the auditor's `get_logs(from_block=0)`
+re-reads the whole history each run (fine for anvil, not a mainnet-length chain),
+and it is only as independent as the RPC endpoint it queries — the *same*
+production gate that already applies to `AnchorClient` (add chain-id +
+contract-code verification, and cross-check independent RPC providers, before any
+non-dev deployment). `run_chain_demo.sh` wires the whole layer end-to-end.
+
+The full trust story now chains: a **signed registry** (Ed25519 + hybrid ML-DSA
+root over canonical JSON) → served by an **anchor-checked mirror** (503 on
+hash/monotonicity mismatch) → committed to an **on-chain anchor** (timelocked,
+monotonic, hash-only) → made auditable by a **transparency log + independent
+auditor**. Each link fails closed, and every link past the registry carries
+**public trust data only**.
+
 ## Documents
 
 - `docs/roadmap.md` — phase status and target project tree
 - `docs/decisions.md` — crypto/architecture decision log
 - `docs/vc-vs-tokens.md` — honest comparison of the blind-token and VC modes
+- `docs/governance-ceremony.md` — registry-anchor governance, separation of
+  duties, and external verification
 
 ## Known limitations (pre-deployment)
 

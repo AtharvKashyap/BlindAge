@@ -171,3 +171,50 @@ implementation is already OpenSSL. The remaining production considerations are
 operational, not cryptographic — a real multi-sig key-generation ceremony for the
 ML-DSA root and propagating the pinned PQ root to the extension — and are tracked
 in docs/roadmap.md.
+
+## 2026-08-02 — Transparency = chain events; RevocationRoots dropped
+
+**Decision:** Build the transparency layer as a thin, stateless view over the
+on-chain `RegistryAnchor`'s `AnchorUpdated` events — **the chain is the log** —
+rather than as a separate append-only log with its own signing key and storage.
+The transparency log server (`blindage/transparency/app.py`) caches and serves
+the ordered event history; the independent auditor
+(`blindage/transparency/auditor.py`) re-derives that history from the chain and
+checks it against the mirror. **Do not** build a `RevocationRoots` contract this
+phase (or a separate Merkle transparency tree); registry `status` + epoch expiry
+already cover revocation at this scale.
+
+**Why chain-is-the-log:** a second, independently-stored log would be a second
+source of truth that can disagree with the chain — and its signing key is one
+more thing to compromise or lose. The `RegistryAnchor` already gives, for free,
+exactly what a transparency log must provide: **ordering** and **immutability**
+(block order + the monotonic-`version` / strictly-increasing-`generated_at`
+on-chain checks) over **public trust data only** (constitution rule 3 — the
+anchor holds a keccak hash + `generated_at` + version, never identity). So the
+log server holds **no state and no key**; if it dies, the auditor and any client
+can reconstruct the same history straight from the chain. There is nothing new to
+compromise. Fail-closed is cheap and mandatory: on any RPC trouble the server
+returns **503** rather than a partial or stale answer, and the auditor turns any
+unreachable dependency or inconsistency into a **FAIL with a distinct problem
+string** (an auditor that skips is an auditor that lies).
+
+**Independence is bounded by the RPC endpoint.** The auditor is only as
+independent as the RPC node it queries — the *same* production gate that already
+applies to `AnchorClient` (add chain-id + contract-code verification, and in
+practice cross-check independent RPC providers, before any non-dev deployment).
+It is dev-scale today: `get_logs(from_block=0)` reads the whole history each run
+(fine for anvil, not for a mainnet-length chain), and there is no testnet/mainnet
+deployment.
+
+**Why RevocationRoots was consciously dropped (YAGNI):** at the current scale,
+revocation is already expressed by the signed registry itself — an issuer or key
+is revoked by flipping its `status` in the registry (whose new version is then
+anchored and made monotonic on-chain) and, for time-boxed trust, by **epoch
+expiry** on the partitioned keys. A dedicated `RevocationRoots` contract earns
+its complexity only when we need **per-token or per-batch revocation** — a
+revocation granularity finer than "revoke this issuer/key in the next registry
+version." We do not, so building it now would be speculative machinery. **Revisit
+trigger:** a concrete requirement for per-token / per-batch revocation (e.g. a
+compromised-token blocklist that must propagate faster than a registry publish).
+Until then, registry status + epochs are the revocation mechanism and this is not
+a gap.

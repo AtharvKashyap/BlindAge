@@ -121,13 +121,42 @@ then one-click anonymous presentations everywhere.
    paths stay classical, and the keccak256 on-chain anchor needs no PQ change [a hash,
    Grover-adequate at 256-bit]. **BlindAge is not a "quantum-safe system"** — only the
    registry trust layer is hybrid. Decision log: `docs/decisions.md` [2026-08-02]).
-- **Deferred trust-track items** (carried forward, not yet built): a transparency-log
-  server + auditor consuming the `AnchorUpdated` events, a `RevocationRoots` contract,
-  a multi-sig proposer / ML-DSA-root key-generation ceremony, and an extension→RPC
-  path (which would also carry the pinned PQ root into the extension). Production
-  gates still open: swap the pure-Python RSABSSA and BBS for audited native/WASM
-  implementations, and add chain-id + contract-code verification to `AnchorClient`.
-- **Research** — ZK age-comparison proofs; PQ anonymous credentials.
+12. **Transparency + governance** — ✅ complete (the on-chain trust root made
+   **externally verifiable**, plus the governance model documented. **The chain
+   is the log:** a stateless, keyless transparency log server
+   [`blindage/transparency/app.py`, `GET /log`] serves the `RegistryAnchor`'s
+   ordered `AnchorUpdated` history — ordering + immutability come from the chain
+   [block order + the on-chain monotonic-version / strictly-increasing-generated_at
+   checks], public trust data only [rule 3]. It holds no state and no key and
+   **fails closed [503]** on any RPC trouble rather than serve a partial/stale
+   answer. An **independent auditor** [`blindage/transparency/auditor.py`, a CLI
+   with cron/CI exit codes] re-derives that history from the chain and checks four
+   things — head reachable, no history rollback, head == last logged event, mirror
+   `registry.json` hashes to the head anchor — turning any unreachable dependency
+   or inconsistency into a **FAIL with a distinct problem string** [PASS ⇒ exit 0,
+   FAIL ⇒ exit 1]. Governance **separation of duties** on the OpenZeppelin
+   `TimelockController` [proposer queues but cannot land; executor lands only a
+   matured op but queues nothing] is proven on-chain in
+   `tests/chain/test_anchor_integration.py` and documented in
+   `docs/governance-ceremony.md`. `run_chain_demo.sh` wires log server + mirror +
+   auditor end-to-end. **A `RevocationRoots` contract was consciously dropped** —
+   registry `status` + epoch expiry cover revocation at this scale [YAGNI; revisit
+   trigger = a per-token/per-batch revocation requirement], see `docs/decisions.md`
+   [2026-08-02]. **Dev-scale:** `get_logs(from_block=0)` re-reads the whole history
+   each run [anvil-only], and the auditor is only as independent as the RPC endpoint
+   it queries — the same production gate as `AnchorClient` [chain-id + contract-code
+   verification]. Decision log: `docs/decisions.md` [2026-08-02]).
+- **Deferred trust-track items** (status): transparency-log server + auditor — ✅
+  **done** (Phase 12); governance separation-of-duties ceremony — ✅ **done**
+  (Phase 12, `docs/governance-ceremony.md`); `RevocationRoots` contract —
+  **consciously dropped**, registry status + epochs cover revocation at this scale
+  (see `docs/decisions.md` 2026-08-02 for the revisit trigger); **extension→RPC
+  path — still open** (would also carry the pinned PQ root into the extension).
+  Production gates still open: swap the pure-Python RSABSSA and BBS for audited
+  native/WASM implementations, and add chain-id + contract-code verification to
+  `AnchorClient` (and, for the auditor, cross-check independent RPC providers).
+- **Research** (the only remaining track) — ZK age-comparison proofs; PQ anonymous
+  credentials.
 
 ## Target directory tree (directories are created per phase [MOD-5])
 
