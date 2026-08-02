@@ -21,8 +21,13 @@ SITE_PID=$!
 trap 'kill $IDP_PID $MIRROR_PID $ISSUER_PID $SITE_PID 2>/dev/null || true' EXIT
 
 echo
-echo "Registry root public key (paste into the extension's Trust card):"
+echo "Classical registry root public key — Ed25519 (paste into the extension's Trust card):"
 cat config/dev/root_public_key.txt
+echo
+echo
+echo "Post-quantum registry root public key — ML-DSA-65 (hybrid-capable clients only;"
+echo "the browser extension verifies the classical Ed25519 key above and ignores this one):"
+cat config/dev/root_public_key_mldsa.txt
 
 cat <<'EOF'
 

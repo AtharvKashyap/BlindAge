@@ -31,7 +31,7 @@ def verify_registry_signature(
         public = Ed25519PublicKey.from_public_bytes(b64u_decode(public_key_b64))
         public.verify(b64u_decode(signature_b64), canonical_json_bytes(registry_dict))
         return True
-    except (InvalidSignature, binascii.Error, ValueError):
+    except (InvalidSignature, binascii.Error, TypeError, ValueError):
         return False
 
 

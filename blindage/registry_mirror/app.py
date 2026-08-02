@@ -49,6 +49,10 @@ def create_mirror(dev_dir: Path = Path("config/dev"), anchor=None) -> FastAPI:
     def registry_sig() -> str:
         return _read("registry.sig")
 
+    @app.get("/registry.sig.mldsa", response_class=PlainTextResponse)
+    def registry_sig_mldsa() -> str:
+        return _read("registry.sig.mldsa")
+
     @app.get("/health")
     def health() -> dict:
         return {"status": "ok"}

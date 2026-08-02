@@ -128,6 +128,8 @@ def test_verify_registry_signature_rejects_malformed_public_key():
     data = registry_dict()
     sig = sign_registry(data, priv)
     assert verify_registry_signature(data, sig, "!!!not-base64!!!") is False
+    # None public key must fail closed (TypeError caught), not escape
+    assert verify_registry_signature(data, sig, None) is False
 
 
 def test_load_raises_registry_error_on_malformed_json(tmp_path: Path):

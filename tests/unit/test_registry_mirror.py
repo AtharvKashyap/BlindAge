@@ -30,6 +30,17 @@ def test_mirror_404s_when_files_missing(tmp_path):
     assert client.get("/registry.sig").status_code == 404
 
 
+def test_mirror_serves_mldsa_sig_when_present_404_when_absent(tmp_path):
+    client = _mirror(tmp_path)
+    # absent by default
+    assert client.get("/registry.sig.mldsa").status_code == 404
+    (tmp_path / "registry.sig.mldsa").write_text("cGtzaWc\n")
+    resp = client.get("/registry.sig.mldsa")
+    assert resp.status_code == 200
+    assert resp.headers["content-type"].startswith("text/plain")
+    assert resp.text == "cGtzaWc\n"  # raw passthrough
+
+
 def test_endpoint_field_accepted_and_optional():
     from tests.conftest import dev_issuer_entry
 

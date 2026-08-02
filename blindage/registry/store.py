@@ -10,7 +10,12 @@ from pathlib import Path
 
 from pydantic import ValidationError
 
-from blindage.registry.signing import verify_registry_signature
+from blindage.registry.signing import (
+    HybridVerificationError,
+    RegistryPolicy,
+    verify_registry_hybrid,
+    verify_registry_signature,
+)
 from blindage.schemas import IssuerKey, IssuerMetadata
 
 
@@ -77,11 +82,42 @@ class TrustRegistry:
         root_public_key_b64: str,
         *,
         anchor=None,
+        mldsa_signature_path=None,
+        mldsa_root_public_key_b64=None,
+        policy: RegistryPolicy = RegistryPolicy.CLASSICAL_ONLY,
     ) -> "TrustRegistry":
         try:
             data = json.loads(Path(registry_path).read_text())
             signature = Path(signature_path).read_text().strip()
-            if not verify_registry_signature(data, signature, root_public_key_b64):
+            hybrid_engaged = (
+                policy is not RegistryPolicy.CLASSICAL_ONLY
+                or mldsa_root_public_key_b64 is not None
+            )
+            if hybrid_engaged:
+                # Read the ML-DSA signature only when it exists; a missing file
+                # passes None through to verify_registry_hybrid, which decides
+                # per policy whether that is a deny (required/pinned) or fine
+                # (preferred without a pinned PQ root).
+                mldsa_signature = None
+                if mldsa_signature_path is not None:
+                    try:
+                        mldsa_signature = (
+                            Path(mldsa_signature_path).read_text().strip()
+                        )
+                    except (FileNotFoundError, OSError):
+                        mldsa_signature = None
+                try:
+                    verify_registry_hybrid(
+                        data,
+                        signature,
+                        root_public_key_b64,
+                        mldsa_signature,
+                        mldsa_root_public_key_b64,
+                        policy,
+                    )
+                except HybridVerificationError as exc:
+                    raise RegistryError(str(exc)) from exc
+            elif not verify_registry_signature(data, signature, root_public_key_b64):
                 raise RegistryError("registry signature verification failed")
             if anchor is not None:
                 # Fail closed: an opt-in anchor gate that cannot be evaluated is

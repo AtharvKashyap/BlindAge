@@ -14,7 +14,12 @@ import secrets
 
 from blindage.crypto import b64u_encode, generate_blind_keypair, generate_token_keypair
 from blindage.crypto.bbs import BBS_ALGORITHM, generate_bbs_keypair
-from blindage.registry import generate_root_keypair, sign_registry
+from blindage.registry import (
+    generate_mldsa_keypair,
+    generate_root_keypair,
+    sign_registry,
+    sign_registry_mldsa,
+)
 
 CLAIMS = ["AGE_OVER_13", "AGE_OVER_16", "AGE_OVER_18", "AGE_OVER_21"]
 ISSUER_ID = "did:web:issuer.test"
@@ -148,11 +153,17 @@ def main() -> None:
     }
 
     root_priv, root_pub = generate_root_keypair()
+    # Phase 11 hybrid: emit an ML-DSA root pair and a second, PQ signature over
+    # the same registry so hybrid-capable clients can pin the ML-DSA root.
+    mldsa_seed, mldsa_pub = generate_mldsa_keypair()
     (out / "issuer_keys.json").write_text(json.dumps({"keys": key_entries}, indent=2))
     (out / "registry.json").write_text(json.dumps(registry, indent=2))
     (out / "registry.sig").write_text(sign_registry(registry, root_priv))
+    (out / "registry.sig.mldsa").write_text(sign_registry_mldsa(registry, mldsa_seed))
     (out / "root_public_key.txt").write_text(root_pub)
     (out / "root_private_key.txt").write_text(root_priv)
+    (out / "root_public_key_mldsa.txt").write_text(mldsa_pub)
+    (out / "root_private_key_mldsa.txt").write_text(mldsa_seed)
     print(f"Dev issuer material written to {out}/")
 
 
