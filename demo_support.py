@@ -40,6 +40,18 @@ def mirror_app():
     return create_mirror(DEV)
 
 
+def log_app():
+    """Transparency log server over the on-chain anchor's AnchorUpdated events.
+
+    Reads the deployed RegistryAnchor address from BLINDAGE_ANCHOR (exported by
+    run_chain_demo.sh after publish) and the RPC from BLINDAGE_RPC. Dev only.
+    """
+    from blindage.transparency.app import create_log_server
+    rpc = os.environ.get("BLINDAGE_RPC", "http://127.0.0.1:8545")
+    anchor = os.environ["BLINDAGE_ANCHOR"]  # set by run_chain_demo.sh
+    return create_log_server(rpc, anchor)
+
+
 def site_app():
     registry = TrustRegistry.load(
         DEV / "registry.json", DEV / "registry.sig", (DEV / "root_public_key.txt").read_text().strip()

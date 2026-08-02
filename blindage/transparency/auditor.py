@@ -8,7 +8,6 @@ import json
 
 import httpx
 
-from blindage.canonical import canonical_json_bytes
 from blindage.registry_chain.anchor import AnchorClient, AnchorError, registry_keccak
 
 
