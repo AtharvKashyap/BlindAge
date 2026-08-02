@@ -108,3 +108,66 @@ via PyO3/maturin, or a WASM build) behind the same
 `bbs_sign/bbs_verify/bbs_proof_gen/bbs_proof_verify` interface — the same
 production gate that applies to the pure-Python RSABSSA. Tracked in
 docs/roadmap.md.
+
+## 2026-08-02 — ML-DSA-65 via cryptography/OpenSSL (hybrid trust layer)
+
+**Decision:** Add a second, post-quantum signature over the trust registry —
+ML-DSA-65 (FIPS 204, the standardized Dilichium) alongside the existing Ed25519
+root signature — using `cryptography` 49's `MLDSA65` primitives (OpenSSL-backed),
+in `blindage/registry/signing.py`. A `RegistryPolicy` enum
+(`classical-only` / `hybrid-preferred` / `hybrid-required`) selects how strictly
+the PQ signature is enforced at load time.
+
+**Why this is different from every prior crypto decision:** for once the primitive
+itself is **native and reviewed** — ML-DSA KeyGen/Sign/Verify are OpenSSL through
+`cryptography`, not hand-written protocol glue on top of a primitive. There is **no
+dev-only "not constant-time" caveat on ML-DSA** the way there is on the pure-Python
+RSABSSA and BBS. The only hand-written code is the policy/downgrade state machine
+(`verify_registry_hybrid`), which contains no secret-dependent arithmetic. No
+Appendix-A-style byte-for-byte vector gate is needed for the primitive because we
+are not implementing the primitive; the tests gate the *policy semantics* instead.
+
+**Seed-based key storage:** private keys are stored as the 32-byte ML-DSA seed
+(`private_bytes_raw()` on `MLDSA65PrivateKey`, restored via `from_seed_bytes`), not
+the ~4 KB expanded secret key. The seed is the canonical FIPS 204 storage form and
+keeps the dev key files small. Consequence noted below in the perf figures: each
+`sign_registry_mldsa` re-expands the key from the seed, so signing is dominated by
+key expansion, not the signature itself.
+
+**Why the trust layer first (spec §7):** the registry is the one place where a
+"harvest-now, decrypt/forge-later" adversary does real long-term damage — a forged
+future registry re-roots trust for the whole system. Tokens and presentations are
+short-lived and single-use, and the on-chain anchor is a **hash** commitment
+(keccak256), which a quantum adversary does not threaten (Grover gives at most a
+quadratic speedup on preimage search, still infeasible for 256-bit; no PQ change to
+the anchor is warranted). So hybrid signing is applied where it matters — the
+long-lived root of trust — and deliberately *not* spread into the token path,
+extension crypto, or issuer well-known yet.
+
+**Downgrade protection — the strict `preferred == required-when-pinned` rule:**
+`hybrid-preferred` behaves **identically to `hybrid-required` whenever the client
+has a pinned ML-DSA root key.** "Preferred" only softens behavior for a client that
+has *no* PQ root key configured yet (early rollout); it never means "verify the PQ
+signature if present, shrug if it's missing." That weaker reading is the classic
+downgrade hole: if a stripped PQ signature were silently accepted by a client that
+*does* hold the PQ root, an attacker who can forge only the classical Ed25519
+signature (the post-quantum threat model) simply deletes `registry.sig.mldsa` and
+the client falls back to the signature the attacker can forge. Enforcing
+preferred-with-a-pinned-key == required closes that: once you hold the PQ root, a
+missing or broken PQ signature is a hard deny (`HybridVerificationError`), so
+stripping never helps. `classical-only` skips the PQ check entirely (no PQ root
+pinned); `hybrid-required` additionally denies when no PQ root is configured at all.
+All rows are pinned by tests including `test_downgrade_strip_attack_denied`.
+
+**What stays classical (deliberately, this phase):** the browser extension's
+in-browser registry verification (Web Crypto Ed25519 only), the issuer well-known
+document, and the token/VC presentation paths. These are tracked as remaining
+trust-track/PQC work, not shipped here. BlindAge is therefore **not** a
+"quantum-safe system" — only the **registry trust layer** is hybrid. Claiming more
+would violate the honest-framing rule.
+
+**No production gate on the primitive** (unlike RSABSSA/BBS): the ML-DSA
+implementation is already OpenSSL. The remaining production considerations are
+operational, not cryptographic — a real multi-sig key-generation ceremony for the
+ML-DSA root and propagating the pinned PQ root to the extension — and are tracked
+in docs/roadmap.md.

@@ -104,8 +104,29 @@ then one-click anonymous presentations everywhere.
    Pure-Python BBS is **not constant-time** — dev-only; production gate is an audited native
    BBS impl [PyO3/WASM] behind the same interface, mirroring the RSABSSA gate. Decision log:
    `docs/decisions.md` [2026-08-02]).
-11. **Hybrid post-quantum signatures** — ML-DSA + Ed25519 on the trust layer, downgrade
-   protection. **(next)**
+11. **Hybrid post-quantum signatures** — ✅ complete (a second, post-quantum
+   signature over the trust registry alongside the classical Ed25519 root. ML-DSA-65
+   [FIPS 204] via `cryptography` 49 / OpenSSL — **native and reviewed**, no dev-only
+   constant-time caveat on the primitive; 32-byte seed key storage; pub 1952 B / sig
+   3309 B. A `RegistryPolicy` enum [`classical-only` / `hybrid-preferred` /
+   `hybrid-required`] drives `verify_registry_hybrid` with **downgrade protection**:
+   `hybrid-preferred` with a pinned PQ root behaves identically to `hybrid-required`,
+   so stripping or breaking `registry.sig.mldsa` is always a hard deny once a client
+   holds the PQ root [closes the classic downgrade hole; pinned by
+   `test_downgrade_strip_attack_denied` + `test_missing_pq_file_denies_when_needed`].
+   `TrustRegistry.load` gains hybrid kwargs; the generator emits `registry.sig.mldsa`
+   + `root_public_key_mldsa.txt`; the mirror serves `/registry.sig.mldsa`; the browser
+   demo prints both root keys. Applied to the **long-lived root of trust only** —
+   the extension registry check [Ed25519/Web Crypto], issuer well-known, and token/VC
+   paths stay classical, and the keccak256 on-chain anchor needs no PQ change [a hash,
+   Grover-adequate at 256-bit]. **BlindAge is not a "quantum-safe system"** — only the
+   registry trust layer is hybrid. Decision log: `docs/decisions.md` [2026-08-02]).
+- **Deferred trust-track items** (carried forward, not yet built): a transparency-log
+  server + auditor consuming the `AnchorUpdated` events, a `RevocationRoots` contract,
+  a multi-sig proposer / ML-DSA-root key-generation ceremony, and an extension→RPC
+  path (which would also carry the pinned PQ root into the extension). Production
+  gates still open: swap the pure-Python RSABSSA and BBS for audited native/WASM
+  implementations, and add chain-id + contract-code verification to `AnchorClient`.
 - **Research** — ZK age-comparison proofs; PQ anonymous credentials.
 
 ## Target directory tree (directories are created per phase [MOD-5])

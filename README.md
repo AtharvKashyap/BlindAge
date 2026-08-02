@@ -7,9 +7,15 @@ once and issues unlinkable, single-use anonymous age tokens. Websites learn
 only whether the user satisfies a threshold (e.g. `AGE_OVER_18`) — never
 identity. The issuer never learns where tokens are used.
 
-> **Status: Phase 10 (selective-disclosure verifiable credentials) complete;
-> Phase 9 (blockchain registry anchor slice) and the everyday-user track
-> (through Phase 8) are complete.** Phase 10 adds a second, reusable-credential
+> **Status: Phase 11 (hybrid post-quantum trust layer) complete; Phase 10
+> (selective-disclosure verifiable credentials), Phase 9 (blockchain registry
+> anchor slice), and the everyday-user track (through Phase 8) are complete.**
+> Phase 11 adds a second, **post-quantum** signature (ML-DSA-65) over the trust
+> registry alongside the classical Ed25519 root signature, with downgrade-
+> protected policy modes — see [hybrid PQC](#hybrid-post-quantum-trust-layer-phase-11)
+> below. This hardens the **long-lived root of trust** against a future quantum
+> adversary; only the registry trust layer is hybrid — BlindAge is **not** a
+> "quantum-safe system." Phase 10 adds a second, reusable-credential
 > mode (BBS selective disclosure) alongside the blind-token path — see
 > [VC mode](#selective-disclosure-vc-mode-phase-10) below. **VC issuance is NOT
 > blind:** the issuer sees the claims it signs; unlinkability comes from
@@ -247,6 +253,98 @@ issuer public key it looks up **in the registry** (never a value carried by the
 presentation, never a live issuer callback), reconstructs the disclosed messages,
 and enforces the domain binding + one-time challenge. Open `/protected-vc` on the
 example site for the in-browser version of the same flow.
+
+## Hybrid post-quantum trust layer (Phase 11)
+
+The registry is the system's **long-lived root of trust**: a forged future
+registry re-roots trust for everything downstream. That makes it the one place a
+"harvest-now, forge-later" quantum adversary does real damage — so it is the first
+(and, this phase, only) place BlindAge signs with a post-quantum algorithm.
+Alongside the classical Ed25519 root signature (`registry.sig`), the generator now
+emits a second signature, **ML-DSA-65** (FIPS 204;
+`registry.sig.mldsa`), over the same canonical registry JSON, and publishes an
+ML-DSA root public key (`root_public_key_mldsa.txt`).
+
+Unlike the RSABSSA and BBS ports, **the ML-DSA primitive itself is native and
+reviewed** — `cryptography` 49's OpenSSL-backed `MLDSA65` KeyGen/Sign/Verify. There
+is **no dev-only "not constant-time" caveat on ML-DSA**; the only hand-written code
+is the downgrade-protection policy state machine, which has no secret-dependent
+arithmetic. Private keys are stored as the 32-byte FIPS 204 **seed**.
+
+`TrustRegistry.load(...)` takes a `RegistryPolicy` plus the ML-DSA signature path
+and pinned ML-DSA root key:
+
+| Policy | PQ root pinned? | Behavior |
+| --- | --- | --- |
+| `classical-only` | — | Verify Ed25519 only; PQ signature ignored. |
+| `hybrid-preferred` | no | Verify Ed25519 only (client has no PQ root yet). |
+| `hybrid-preferred` | **yes** | **Identical to `hybrid-required`** — PQ signature must be present and valid. |
+| `hybrid-required` | yes | Ed25519 **and** ML-DSA must both verify. |
+| `hybrid-required` | no PQ root configured | **Deny** — refuses to run without a PQ root. |
+
+The critical row is `hybrid-preferred` **with a pinned PQ root == `hybrid-required`**.
+"Preferred" only softens behavior for a client that has no PQ root key configured
+yet (early rollout); it never means "check the PQ signature if it happens to be
+there." That weaker reading is the classic **downgrade hole**: an adversary who can
+forge only the classical signature (the post-quantum threat) would just delete
+`registry.sig.mldsa` and force a fallback to the signature it can forge. Once a
+client holds the PQ root, a missing or broken ML-DSA signature is therefore a hard
+deny — stripping never helps. Pinned by `test_downgrade_strip_attack_denied` and the
+file-level `test_missing_pq_file_denies_when_needed`.
+
+Run `hybrid-required` against the dev registry (the browser demo already generates
+both keys and the mirror already serves `/registry.sig.mldsa`):
+
+```python
+from pathlib import Path
+from blindage.registry import RegistryPolicy
+from blindage.registry.store import TrustRegistry
+
+dev = Path("config/dev")
+reg = TrustRegistry.load(
+    dev / "registry.json",
+    dev / "registry.sig",
+    (dev / "root_public_key.txt").read_text().strip(),
+    mldsa_signature_path=dev / "registry.sig.mldsa",
+    mldsa_root_public_key_b64=(dev / "root_public_key_mldsa.txt").read_text().strip(),
+    policy=RegistryPolicy.HYBRID_REQUIRED,
+)  # raises RegistryError if the ML-DSA signature is missing, stripped, or invalid
+```
+
+`scripts/run_browser_demo.sh` prints both the Ed25519 and the ML-DSA-65 root public
+keys (the latter flagged hybrid-capable-clients-only).
+
+**Sizes and timings.** ML-DSA-65 is much larger than Ed25519 but still negligible
+in absolute terms for a per-registry-publish operation. Signature and public-key
+sizes (bytes), and 50-iteration mean sign/verify time over the dev registry dict:
+
+| Algorithm | Public key | Signature | Sign (mean) | Verify (mean) |
+| --- | ---: | ---: | ---: | ---: |
+| Ed25519 (classical) | 32 B | 64 B | ~0.23 ms | ~0.24 ms |
+| ML-DSA-65 (post-quantum) | 1952 B | 3309 B | ~7.4 ms | ~1.0 ms |
+
+(ML-DSA private keys are stored as a 32-byte seed. `sign_registry_mldsa` re-expands
+the key from that seed on each call, so signing time is dominated by key expansion,
+not the signature — irrelevant for a signing operation that runs once per registry
+publish. Figures from `cryptography`/OpenSSL on the dev machine; treat as
+order-of-magnitude.)
+
+**What stays classical, and why (this phase, deliberately):**
+
+- **The browser extension** still verifies the registry with **Ed25519 only** (Web
+  Crypto). Propagating the pinned ML-DSA root to the extension is deferred
+  trust-track work.
+- **The issuer well-known document** and the **token / VC presentation paths** are
+  unchanged — short-lived, single-use artifacts, not the long-lived trust root.
+- **The on-chain anchor needs no PQ change.** It commits to the registry with a
+  **keccak256 hash**, not a signature. A quantum adversary gains at most a quadratic
+  (Grover) speedup on 256-bit preimage search — still infeasible — so the hash
+  anchor is already post-quantum-adequate. Adding a PQ signature there would harden
+  nothing.
+
+Because only the registry trust layer is hybrid, **BlindAge is not a "quantum-safe
+system"** — it is a system whose root of trust is hybrid-signed. See
+`docs/decisions.md` (2026-08-02) for the full rationale.
 
 ## Documents
 
